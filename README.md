@@ -301,6 +301,83 @@ capability request is **not stated** in the docs, and Expo has no PushToTalk
 module, so that is a custom native module and the largest unbudgeted item on the
 native path.
 
+## Correction: the router premise was false, and so was my exclusion
+
+Two findings from adversarial review and an empirical feasibility test overturn
+the architecture recorded above. Both are recorded here rather than quietly
+edited, because the earlier text is what a reader would otherwise build.
+
+### 1. Switching workspaces mid-call is trivial. The router was solving nothing.
+
+The claim that motivated a persistent router — "switching a realtime voice
+session between workspaces is hard" — is contradicted by the API it sits on.
+[OpenAI Realtime client events](https://developers.openai.com/api/reference/resources/realtime/client-events),
+verbatim:
+
+> The client may send this event at any time to update any field except for
+> `voice` and `model`.
+
+`tools` and `instructions` are both updatable mid-session. Selecting a workspace
+is **one `session.update` on the open data channel** that swaps in that
+workspace's tool set. No second agent, no fan-out, no ticket indirection.
+
+So the router does not survive as *"the thing that avoids switching voice
+sessions"*. Something still has to reach the worker sessions — but it should be a
+plain, restartable, observable service with its state in Postgres, not a
+long-lived Claude Code session. Two further findings say the same thing from the
+other direction: a single session **serializes every workspace behind one turn
+chain** (an emergency "stop the deploy" queues behind a ten-minute turn), and
+**compaction silently destroys the ticket-to-workspace binding**, producing
+fluent, confident, wrong readbacks.
+
+### 2. Cross-session messaging is documented and GA. Excluding it was my error.
+
+This document previously excluded `CLAUDE_CODE_MESSAGING_SOCKET` as "undocumented
+and will break silently on upgrade". That was wrong.
+[Cross-session messaging](https://code.claude.com/docs/en/cross-session-messaging)
+is GA (v2.1.224+) and explicitly sanctions the use:
+
+> Read this section ... **when you want a script or hook to post into a session**
+
+It was proven end-to-end on this machine, not merely read: a session spawned in
+tmux, left until `idle`, then messaged from a plain Python script that was not a
+Claude Code child — the session woke and executed. Both polarities were run.
+
+**The trap that run exposed**, and it matters more than the capability: when the
+receiving session bypasses permission prompts, Claude Code **holds** each message
+for approval and drops it after five minutes unless the sender can attest its own
+permission class. An HTTP service cannot attest. The naive build therefore
+silently swallows every message. The fix is a single setting on the receiver —
+and *needing* that fix is itself the warning in finding 3.
+
+There is also a purpose-built seam: [channels](https://code.claude.com/docs/en/channels)
+publishes a contract for building your own, whose stdio MCP server can host an
+HTTP listener directly, and which has a documented reply path. It is research
+preview and its contract may change.
+
+### 3. What survives review, and must be designed for
+
+- **Permission laundering.** Voice utterance → service → a session with *different*
+  permissions is the pattern the harness contract explicitly prohibits. Making
+  fan-out work unattended pushes toward flattening permissions across every
+  session, which converts one spoken word into unreviewed execution everywhere.
+- **Injection with an audio exfiltration channel.** Worker output is derived from
+  repo content — READMEs, changelogs, postinstall banners. If an ask is free text
+  that a router actions, a crafted string reaches other workspaces and the result
+  is *read aloud*. Asks must be structured data with bounded fields.
+- **Voice approval has no evidence surface.** Every ask worth escalating was
+  escalated because a human needed to *see* something — a diff, a failure, a blast
+  radius. Voice replaces a reviewable, logged, textual approval with an ephemeral
+  acoustic one, summarised by the same agent that wants the yes, and leaves no
+  audit artifact. This degrades decision quality in proportion to how consequential
+  the decision is.
+- **Anyone within earshot is an authenticated principal**, and barge-in is designed
+  to yield to any incoming voice.
+- **Cost is re-billed context.** OpenAI's own guidance is that the entire
+  conversation is sent to the model for each response, and caching is best-effort;
+  injecting async answers into a live call permanently enlarges what is re-billed
+  on every later turn.
+
 ## The decision this prototype does not settle
 
 Whether walkie attaches to **sessions you do not own** — the Claude Code sessions

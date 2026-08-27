@@ -1,0 +1,129 @@
+{
+  "measured_at": "2026-08-27T15:41:30+00:00",
+  "workspace": "/Users/broomva/broomva/apps/walkie",
+  "window_days": 7,
+  "sessions_analyzed": 0,
+  "metrics": {
+    "m1_continue_nudges_per_session": null,
+    "m2_tool_error_rate": null,
+    "m3_read_before_edit_rate": null,
+    "m4_permission_bypass_per_session": null,
+    "m5_kg_load_rate": null,
+    "m6_meta_work_session_ratio": null
+  },
+  "raw": {
+    "sessions_analyzed": 0,
+    "continue_nudges": 0,
+    "tool_results": 0,
+    "tool_errors": 0,
+    "read_before_edit_errors": 0,
+    "sandbox_bypasses": 0,
+    "edits": 0,
+    "kg_sessions": 0,
+    "meta_sessions": 0,
+    "product_sessions": 0
+  },
+  "policy_warnings": [
+    "could not load setpoints (/Users/broomva/broomva/apps/walkie/.control/leverage-setpoints.yaml): [Errno 2] No such file or directory: '/Users/broomva/broomva/apps/walkie/.control/leverage-setpoints.yam\u2026 (+2 chars)"
+  ],
+  "results": [
+    {
+      "key": "m1_continue_nudges_per_session",
+      "value": null,
+      "level": "L1",
+      "status": "no_setpoint",
+      "name": "m1"
+    },
+    {
+      "key": "m2_tool_error_rate",
+      "value": null,
+      "level": "L0",
+      "status": "no_setpoint",
+      "name": "m2"
+    },
+    {
+      "key": "m3_read_before_edit_rate",
+      "value": null,
+      "level": "L0",
+      "status": "no_setpoint",
+      "name": "m3"
+    },
+    {
+      "key": "m4_permission_bypass_per_session",
+      "value": null,
+      "level": "L0",
+      "status": "no_setpoint",
+      "name": "m4"
+    },
+    {
+      "key": "m5_kg_load_rate",
+      "value": null,
+      "level": "L2",
+      "status": "no_setpoint",
+      "name": "m5"
+    },
+    {
+      "key": "m6_meta_work_session_ratio",
+      "value": null,
+      "level": "L3",
+      "status": "no_setpoint",
+      "name": "m6"
+    }
+  ],
+  "worst": null,
+  "closure": {
+    "closed": false,
+    "sensor_live": false,
+    "levels_closed": false,
+    "reference_authored": false,
+    "authored_by": "unknown",
+    "sessions": 0,
+    "levels": {
+      "L0": {
+        "live": false,
+        "metrics": [
+          {
+            "name": "m2",
+            "value": null
+          },
+          {
+            "name": "m3",
+            "value": null
+          },
+          {
+            "name": "m4",
+            "value": null
+          }
+        ]
+      },
+      "L1": {
+        "live": false,
+        "metrics": [
+          {
+            "name": "m1",
+            "value": null
+          }
+        ]
+      },
+      "L2": {
+        "live": false,
+        "metrics": [
+          {
+            "name": "m5",
+            "value": null
+          }
+        ]
+      },
+      "L3": {
+        "live": false,
+        "metrics": [
+          {
+            "name": "m6",
+            "value": null
+          }
+        ]
+      }
+    },
+    "extra_levels": {}
+  }
+}

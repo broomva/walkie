@@ -62,13 +62,23 @@ deferred_until_research_lands:
 
 decisions:
   - id: no-messaging-socket
-    taken: CLAUDE_CODE_MESSAGING_SOCKET is excluded as an architectural spine.
-    why: undocumented, per-PID, and it would break silently on upgrade.
-    undo: one commit, if research shows it is in fact supported.
+    taken: REVERSED. CLAUDE_CODE_MESSAGING_SOCKET was excluded as undocumented.
+    correction: cross-session messaging is DOCUMENTED and GA (v2.1.224+), and the
+      docs explicitly sanction a script or hook posting into a session. Proven
+      end-to-end here from a non-Claude process. The exclusion was my error.
+    caveat: a receiver on bypass-permissions HOLDS messages from a sender that
+      cannot attest its permission class, and drops them after five minutes.
+    undo: n/a — already reversed.
   - id: voice-not-brain
-    taken: the realtime model owns capture and speech only; a Claude Code session
-      holds state and does the work.
+    taken: the realtime model owns capture and speech only. STILL HOLDS.
     why: a turn runs 9s-10min and a realtime call will not hold for it.
+    undo: one commit.
+  - id: router-is-a-service-not-a-session
+    taken: the routing layer is a plain restartable service with state in
+      Postgres, NOT a long-lived Claude Code session.
+    why: session.update swaps tools mid-call, so the router's original
+      justification is gone; and one session serializes all workspaces behind a
+      single turn chain while compaction destroys ticket bindings silently.
     undo: one commit.
 
   - id: ptt-entitlement-approval
