@@ -185,6 +185,60 @@ holds the voice channel and can reach every session, so the fail-closed allowlis
 and the "delivery goes to the principal on file" rule apply at that one point
 instead of at N.
 
+## The realtime layer
+
+Anthropic ships no realtime speech-to-speech API, so the voice layer comes from
+elsewhere. Claude Code's own `/voice` is **dictation only** — push-to-talk speech
+transcribed into the prompt input, local to the terminal, no voice out and no
+duplex. That is the input half; talkback added the output half. Neither reaches a
+phone, which is the gap walkie exists to close.
+
+### Verified against the OpenAI Realtime docs
+
+| Detail | Value |
+|---|---|
+| SDP exchange | `POST https://api.openai.com/v1/realtime/calls` |
+| Encoding | multipart form fields named `sdp` and `session` — not file uploads |
+| Auth (server) | `Authorization: Bearer $OPENAI_API_KEY` |
+| Auth (browser) | `POST /v1/realtime/client_secrets` for ephemeral credentials |
+| Events channel | a data channel named `oai-events` |
+| Models | `gpt-realtime-2.1`, `gpt-realtime-translate`, `gpt-live-transcribe` |
+
+ElevenLabs Agents is the equivalent on the other side: fine-tuned STT, a
+swappable LLM ("bring your own custom model"), low-latency TTS, and a proprietary
+turn-taking model handling interruptions, reachable from React, Swift, Kotlin and
+React Native SDKs, plus SIP and Twilio for telephony.
+
+### Three layers, and the voice model is not the brain
+
+1. **Voice layer** — OpenAI Realtime over WebRTC, or ElevenLabs Agents. Owns mic
+   capture, turn-taking, barge-in and speech. It holds no state and does no work.
+2. **Router agent** — a Claude Code session on a root workspace. The brain,
+   exposed to the voice layer as a small number of function tools.
+3. **Worker sessions** — the real workspaces, reached by the router over
+   agent-to-agent messaging.
+
+The binding constraint is that a Claude Code turn runs 9s to 10min and a realtime
+call will not hold for it. So the tools are asynchronous by construction:
+`ask_workspace(workspace, question)` acknowledges and returns a ticket
+immediately, and the voice agent says so. Anything the router already knows —
+what is running, what is blocked, what changed — it answers inside the call.
+
+### Which unifies the two delivery paths
+
+The realtime data channel accepts `conversation.item.create`, so the server can
+inject into a live conversation. That gives one rule instead of two:
+
+- **Call open** — the answer is spoken into the existing session when it lands.
+- **Call closed**, phone in a pocket — the answer arrives as the notification plus
+  audio artifact already designed.
+
+This corrects the earlier position in this document that WebRTC was deferrable.
+That was right for streaming every readback and wrong for talking to the router:
+a persistent agent answering instantly from state it already holds is exactly
+what realtime is for. The deferral now applies only to ride-along narration of
+long work, which stays on the artifact path.
+
 ## The decision this prototype does not settle
 
 Whether walkie attaches to **sessions you do not own** — the Claude Code sessions
