@@ -1,0 +1,15 @@
+# Pencil writes a per-document `fileToken` UUID into every .pen. It is generated
+# locally by the editor (`createFileToken()` in Pen's document manager) and
+# identifies the document; it is not a credential, but its entropy trips
+# gitleaks' generic-api-key rule.
+#
+# Ignored by FINGERPRINT rather than by a config allowlist, deliberately:
+#   - a global allowlist `paths` entry makes gitleaks skip the whole file before
+#     scanning ("scanned ~0 bytes"), exempting every future secret in the file;
+#   - `regexTarget = "line"` suppressed every finding in the repository.
+# Both were caught by scripts/verify-gitleaks-allowlist.sh, which plants a real
+# key in a .pen and asserts it is still reported.
+#
+# A fingerprint is file:rule:line, so this fails CLOSED: if the token moves, the
+# finding returns and has to be looked at again.
+designs/walkie.pen:generic-api-key:2795
