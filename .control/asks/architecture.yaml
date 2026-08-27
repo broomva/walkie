@@ -35,6 +35,20 @@ asks:
     reversible: yes, the client is the last layer to harden
     exhausted: [read, standing-grant, delegate, reroute, loop, default]
 
+  - id: openai-credits
+    class: credential
+    gates: [any validation or use of the OpenAI Realtime path]
+    question: The OpenAI account returns credit_balance_exhausted. Add credit, or
+      commit to ElevenLabs for the voice layer?
+    finding: minting an ephemeral client secret still returns HTTP 200 on an
+      exhausted account; the failure only appears when the session opens. A 200
+      from /v1/realtime/client_secrets is not a usable-session signal.
+    default: proceed on ElevenLabs. It works on this account today, already has a
+      Genesis Voice agent wired to Genesis through a live Tailscale Funnel, and
+      under pause-and-resume its enterprise-gated injection is not needed.
+    reversible: yes — the voice layer sits behind one seam
+    exhausted: [read, standing-grant, delegate, reroute, loop, default]
+
   - id: railway-auth
     class: credential
     gates: [deploying the edge]

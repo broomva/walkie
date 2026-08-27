@@ -283,6 +283,53 @@
 
 <p>Note what is <em>not</em> a milestone: standing up the runtime session. Genesis already spawns and resumes Claude Code sessions in per-session worktrees, and <code>/loop</code> and <code>/schedule</code> already give a session its own cadence. The runtime is a Genesis session with a brief, not a new piece of infrastructure — which is why milestone 1 is about reaching <em>other</em> sessions rather than about creating this one.</p>
 
+<h2>Validation status</h2>
+
+<p>What has actually been run, as opposed to read. This section exists because everything above was documentation until these probes, and two of them found blockers that reading could not.</p>
+
+<table>
+<thead><tr><th>Leg</th><th>Status</th><th>Evidence</th></tr></thead>
+<tbody>
+<tr><td>Non-Claude process wakes a local Claude Code session and it acts</td><td><span class="tag t-ok">proven</span></td><td>Session left idle in tmux, driven from a plain Python script. Both polarities run: held without the inbound setting, delivered with it.</td></tr>
+<tr><td>OpenAI ephemeral secret mints</td><td><span class="tag t-ok">proven</span></td><td>HTTP 200, <code>ek_…</code>, <code>gpt-realtime-2.1</code>.</td></tr>
+<tr><td>OpenAI Realtime session usable</td><td><span class="tag t-block">blocked</span></td><td><code>insufficient_quota</code> / <code>credit_balance_exhausted</code> on session open. <strong>The mint succeeded anyway</strong> — a 200 from <code>client_secrets</code> is not a green light.</td></tr>
+<tr><td>ElevenLabs account reachable</td><td><span class="tag t-ok">proven</span></td><td><code>creator</code> tier, 3,491 of 130,958 characters used.</td></tr>
+<tr><td>ElevenLabs Agents wired to Genesis</td><td><span class="tag t-ok">proven, and already in production</span></td><td>A "Genesis Voice" agent exists carrying <code>genesis_voice_identify</code> and <code>genesis_voice_request</code>, both webhooks to Genesis on the VPS through a Tailscale Funnel. Host answered in 0.46s.</td></tr>
+<tr><td>Server-side injection into a live ElevenLabs conversation</td><td><span class="tag t-block">unavailable</span></td><td>Monitor WebSocket is enterprise-only; this account is <code>creator</code>. Confirmed against the account, not just the docs.</td></tr>
+<tr><td>Any WebRTC call, either vendor</td><td><span class="tag t-block">not attempted</span></td><td>—</td></tr>
+<tr><td>Pause and resume with a durable queue</td><td><span class="tag t-block">not attempted</span></td><td>—</td></tr>
+</tbody>
+</table>
+
+<h2>Pause and resume, and why it dissolves both blockers</h2>
+
+<p>Agent sessions run for hours. Holding a voice call open across that is wrong on every axis — the 60-minute cap, silent truncation, and rising per-turn cost all bite hardest exactly then. So the call is <strong>ephemeral and the queue is durable</strong>: work proceeds with nobody listening, and a conversation is established when there is something worth saying.</p>
+
+<div class="card">
+<p><span class="tag t-info">consequence</span> <strong>Under pause-and-resume, nothing ever needs to be injected into a live call.</strong> The queue is drained at conversation <em>start</em>, by the agent's first tool call. That single change removes the requirement that both blockers above attach to.</p>
+</div>
+
+<p>This matters more than it sounds, because the two vendor problems are both problems with <em>injection</em>:</p>
+
+<ul>
+<li>ElevenLabs' server-push is enterprise-gated, and this account is <code>creator</code>. Under pause-and-resume it is not needed.</li>
+<li>OpenAI's server-push is ungated — which is why it was chosen — but the account has no credits. Under pause-and-resume that advantage was never load-bearing.</li>
+</ul>
+
+<p>So the vendor decision recorded earlier is <strong>weakened by this requirement</strong>. It rested substantially on ungated server-side injection. Remove the need for injection and what remains is that ElevenLabs works on this account today, already has an agent wired to Genesis through a live Funnel, and offers a configurable session ceiling up to two hours against OpenAI's fixed sixty minutes. The honest position is that ElevenLabs is now at least even and probably ahead, and OpenAI cannot be evaluated at all until the account has credit.</p>
+
+<h3>How resume works without overrides</h3>
+
+<p>Three ways an agent could open with queued content, and only one survives contact with the account:</p>
+
+<ol>
+<li><strong>Override <code>first_message</code> at conversation start.</strong> Closed — the existing agent has every prompt and first-message override disabled.</li>
+<li><strong>Dynamic variables interpolated into the prompt.</strong> Possible, but requires placeholders declared on the agent in advance, and it puts queue content into the prompt where injection risk lives.</li>
+<li><strong>The agent's first action is a tool call that drains the queue.</strong> <em>Chosen.</em> Needs no overrides, no enterprise tier, and no advance declaration. It also keeps queue content on the tool-result path, which is the bounded-data path rather than the instruction path — the same reason asks are structured data rather than free text.</li>
+</ol>
+
+<p>Note the tool budget this must fit: the existing agent's webhooks carry <code>response_timeout_secs: 10</code> with <code>execution_mode: immediate</code>. Draining a queue is a fast read and fits comfortably. Anything that needs to <em>wait</em> for an agent must not be a synchronous tool — which is what Genesis's <code>/voice/request</code> already encodes by enqueuing and returning a ticket.</p>
+
 <h2>Open questions</h2>
 
 <table>
