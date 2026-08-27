@@ -67,9 +67,59 @@ screen.
 
 Broomva foundation plus the agentic-work extension, adapted for native mobile. The
 canonical six work states are used exactly: `Queued`, `Running`, `Stuck`,
-`Needs you`, `Done`, `Standing`. `Needs you` is a filled tidepool chip and
-`Running` is a tidepool dot, so structure separates them and colour never carries
-meaning alone.
+`Needs you`, `Done`, `Standing`.
+
+Three further systems were studied and taken from selectively. Each was read for
+what it solves that Broomva does not specify, and rejected where it would
+overwrite Broomva's identity.
+
+| Source | Taken | Rejected, and why |
+|---|---|---|
+| [Apple](https://developer.apple.com/design/) | Grouped-inset lists, separators inset to the text, elevation only for genuinely floating chrome, size-specific tracking, feedback on press rather than release | Warm materials as a default surface treatment |
+| [ElevenLabs](https://ui.elevenlabs.io/) | A stacked surface ladder, hairline borders in preference to shadows on in-flow surfaces, and the accent colour reserved **exclusively** for the audio object | The warm eggshell/taupe palette, which is their identity |
+| [Wispr Flow](https://wisprflow.ai/post/designing-a-natural-and-useful-voice-interface) | The waveform **is** the capture control, not a decoration beside one; no streaming partials — wait, understand, then deliver | The cream ground and editorial serif display |
+
+### The elevation rule, reconciled
+
+ElevenLabs prefers hairline borders over shadows; Apple prefers materials and
+layered shadows. They only conflict if applied at the same scope. Split by
+whether a surface actually floats and all three systems agree, Broomva included:
+
+- **In-flow content** — grouped containers on a tonal step, `1px` hairline, no
+  shadow. Separation comes from the tonal ladder, not from depth.
+- **Floating chrome** — the tab bar only. Translucent, a bright top edge rather
+  than a full stroke, and a two-layer shadow: a tight contact shadow plus a wide
+  soft lift.
+
+That is Broomva's own "matte by default, earned elevation", stated in more
+operable terms.
+
+### Two audio objects
+
+ElevenLabs reserves colour for the audio object. Walkie has two, and the split is
+semantic rather than decorative:
+
+- **Orb** — the agent's voice coming *out*. A mesh-gradient sphere on the blue
+  axis, used while a readback plays.
+- **Waveform capsule** — your voice going *in*. A pill whose entire content is
+  the waveform, following Wispr: the control and the feedback are the same
+  object.
+
+They are the only saturated elements in the interface. Everything else is
+blue-axis monochrome plus the semantic state dots, which pair a colour with an
+ink label so colour never carries meaning alone.
+
+### Typography
+
+Tracking is size-specific and runs in opposite directions by tier — display
+tightens, body loosens. Apple and ElevenLabs specify this independently, which is
+why it is followed here rather than treated as taste: `-0.02em` at 28px,
+`+0.01em` on 15–16px body, `+0.3` on 12px labels. Leading runs inversely: `1.18`
+on display, `1.5–1.6` on body.
+
+Application chrome stays on the system sans stack. Both reference products use an
+editorial serif for display, and it was not adopted: Broomva reserves Cal Sans
+for marketing and hero surfaces, and an in-app question is neither.
 
 ### Adapter decisions
 
@@ -77,13 +127,63 @@ Pencil stores colour as hex; Broomva's canonical source is OKLCH. The mapping wa
 computed once and is recorded in the file's `Token provenance` note rather than
 eyeballed.
 
-One real accessibility failure came out of the audit: **Resonant AI Blue
-(`oklch(0.60 0.12 260)`, `#5480C7`) is 3.97:1 on paper**, below the 4.5:1 floor for
-text. It is unchanged for icons and fills, where the non-text floor is 3:1, and
-darkened to `oklch(0.54 0.12 260)` = `#436EB4` only where it carries text on light
-surfaces. Dark theme is unaffected. Every other pair clears AA — the full sweep
-covers primary, secondary, muted, accent, and functional colours against both
-themes' surfaces.
+Every colour that carries text clears 4.5:1 and every dot clears the 3:1 non-text
+floor, on both `paper` and `canvas`. Two failures were found and fixed at the
+adapter boundary rather than shipped:
+
+- **Resonant AI Blue is 3.97:1 on paper.** Kept for icons and fills, darkened to
+  `oklch(0.54 0.12 260)` where it carries text.
+- **Attention amber fails even the 3:1 non-text floor** at `oklch(0.76 0.15 85)`
+  (2.17:1 on paper). Darkened to `oklch(0.62 0.15 85)` for state dots. Green and
+  tidepool clear 3:1 but fail as text, which is why state labels are ink.
+
+## Navigation: the orb is the app
+
+The orb is not a per-screen element. It is central and persistent, it can be
+pushed down to reveal the full context behind it, and it can be retrieved. Two
+states carry the whole model:
+
+- **Orb up** — the orb holds the centre, the current ask reads underneath it, and
+  the wave capsule sits at the bottom. This is the default.
+- **Orb down** — the orb collapses into a floating dock capsule at the bottom
+  edge, naming what it is routed to, and the full context takes the screen.
+
+**Channels stopped being a destination.** With one persistent voice object, a
+list of channels to navigate into is the wrong metaphor. Channels are now a
+routing filter at the top of every screen: they select which workspace the orb
+answers for, in realtime. Selecting `seaslug` does not navigate anywhere, it
+re-points the voice.
+
+## Why the voice attaches to one agent, not to every session
+
+Switching a realtime voice session between workspaces is expensive and fragile,
+and it was the hard part of every architecture considered earlier.
+
+The way out is to stop trying. **One persistent realtime channel connects the
+phone to a single router agent on a root workspace.** That agent reaches every
+other Claude Code session over agent-to-agent messaging, which is first-party and
+already works — a peer session messaged this one mid-build while this document
+was being written.
+
+That dissolves the open question this prototype previously carried. Injection
+stops being the problem:
+
+| Previously considered | Status under the router model |
+|---|---|
+| Claude Code Channels | not needed for injection |
+| `tmux send-keys` | not needed |
+| `CLAUDE_CODE_MESSAGING_SOCKET` | not needed, and it was the fragile option |
+| Genesis-owned sessions only | no longer a limitation |
+
+The router is also the natural home for the triage the attention budget demands:
+it is the one agent that sees every session's asks, so it decides what is worth a
+squawk. Claude Code's own subagents and dynamic workflows give it the machinery
+to fan out across sessions without the client knowing how many exist.
+
+What this moves rather than removes: the router becomes the trust boundary. It
+holds the voice channel and can reach every session, so the fail-closed allowlist
+and the "delivery goes to the principal on file" rule apply at that one point
+instead of at N.
 
 ## The decision this prototype does not settle
 

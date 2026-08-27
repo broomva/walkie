@@ -3,13 +3,10 @@
 # identifies the document; it is not a credential, but its entropy trips
 # gitleaks' generic-api-key rule.
 #
-# Ignored by FINGERPRINT rather than by a config allowlist, deliberately:
-#   - a global allowlist `paths` entry makes gitleaks skip the whole file before
-#     scanning ("scanned ~0 bytes"), exempting every future secret in the file;
-#   - `regexTarget = "line"` suppressed every finding in the repository.
-# Both were caught by scripts/verify-gitleaks-allowlist.sh, which plants a real
-# key in a .pen and asserts it is still reported.
+# A .pen rewrites wholesale on save, so this fingerprint's line number drifts and
+# the finding returns — by design, it fails CLOSED. Regenerate with
+# scripts/refresh-pen-ignore.sh, which refuses to write unless every finding it
+# would ignore has `fileToken` in its matched text.
 #
-# A fingerprint is file:rule:line, so this fails CLOSED: if the token moves, the
-# finding returns and has to be looked at again.
-designs/walkie.pen:generic-api-key:2795
+# Both polarities are asserted by scripts/verify-gitleaks-allowlist.sh.
+designs/walkie.pen:generic-api-key:5009
