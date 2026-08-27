@@ -378,6 +378,50 @@ preview and its contract may change.
   injecting async answers into a live call permanently enlarges what is re-billed
   on every later turn.
 
+## Voice vendor: OpenAI Realtime
+
+Both vendors can do the job. The decision turns on two things, and not on the
+one usually cited.
+
+**Not the differentiator:** server-side injection into a live call. ElevenLabs
+*does* have it — `wss://api.elevenlabs.io/v1/convai/conversations/{id}/monitor`
+accepts a `contextual_update` command that injects context into an active
+conversation. An earlier pass here concluded it did not exist, by enumerating
+REST paths in `openapi.json` — a check structurally incapable of finding a
+WebSocket endpoint. Worth recording as a research failure mode, not just a fact.
+
+**The actual differentiators:**
+
+| | OpenAI Realtime | ElevenLabs Agents |
+|---|---|---|
+| Server-side injection | standard API key, no plan gate | **enterprise-only** |
+| Idle connection time | not billed | billed as wall-clock (95% off only for silences over 10s) |
+| Session ceiling | fixed | `max_duration_seconds`, default 600s, configurable 60–7200s |
+
+The enterprise gate is disqualifying on its own for a personal tool, and idle
+billing is exactly wrong for a channel whose value is being *available*. One
+point favours ElevenLabs — a configurable two-hour ceiling against OpenAI's fixed
+cap — which matters only if a single call routinely runs that long, and under the
+triage-not-authorization scoping it should not.
+
+### Two things not to design on
+
+- **`execution_mode: "async"`** exists on ElevenLabs webhook tools and is described
+  as "best for long-running operations", but it appears **only** in API-reference
+  schema dumps: no guide, no example, and no statement of whether or how an async
+  tool's result ever reaches the model. The field is real; the behaviour is
+  unproven. It would need an empirical test before anything depends on it.
+- The webhook-tools **guide** documents neither `response_timeout_secs` nor
+  `execution_mode` — both live only in the API reference. Anyone working from the
+  guide concludes neither exists.
+
+### One technique worth keeping
+
+To hold a stream open while a backend thinks, return an initial chunk ending in an
+ellipsis **followed by a space**. The trailing space is load-bearing. That is a
+cheap mitigation for the latency cascade between speech recognition, a slow tool,
+and speech synthesis.
+
 ## The decision this prototype does not settle
 
 Whether walkie attaches to **sessions you do not own** — the Claude Code sessions

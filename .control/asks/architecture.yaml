@@ -44,10 +44,10 @@ asks:
     exhausted: [read, standing-grant, delegate, reroute, loop, default]
 
 deferred_until_research_lands:
-  - id: voice-vendor
-    class: decision
-    note: OpenAI Realtime vs ElevenLabs Agents. Asking before the transport
-      research returns would make the human decide blind.
+  # RESOLVED by research. Verdict: OpenAI Realtime. ElevenLabs gates server-side
+  # injection behind an enterprise plan and bills idle connection wall-clock,
+  # which is exactly wrong for a channel whose value is being available. Both
+  # can otherwise do the job.
   # RESOLVED by research — moved out of deferred, kept here for the audit trail.
   # Verdict: PWA for the v1 interaction-loop prototype, scoped honestly as
   # notify-and-open; Expo dev-client + Apple PushToTalk for the actual product.
