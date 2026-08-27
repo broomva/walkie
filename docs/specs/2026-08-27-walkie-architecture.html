@@ -296,8 +296,25 @@
 <tr><td>ElevenLabs account reachable</td><td><span class="tag t-ok">proven</span></td><td><code>creator</code> tier, 3,491 of 130,958 characters used.</td></tr>
 <tr><td>ElevenLabs Agents wired to Genesis</td><td><span class="tag t-ok">proven, and already in production</span></td><td>A "Genesis Voice" agent exists carrying <code>genesis_voice_identify</code> and <code>genesis_voice_request</code>, both webhooks to Genesis on the VPS through a Tailscale Funnel. Host answered in 0.46s.</td></tr>
 <tr><td>Server-side injection into a live ElevenLabs conversation</td><td><span class="tag t-block">unavailable</span></td><td>Monitor WebSocket is enterprise-only; this account is <code>creator</code>. Confirmed against the account, not just the docs.</td></tr>
-<tr><td>Any WebRTC call, either vendor</td><td><span class="tag t-block">not attempted</span></td><td>—</td></tr>
-<tr><td>Pause and resume with a durable queue</td><td><span class="tag t-block">not attempted</span></td><td>—</td></tr>
+<tr><td><strong>The whole loop, end to end, against ElevenLabs</strong></td><td><span class="tag t-ok">PROVEN — 8/8</span></td><td>Conversation opens → the agent's <em>first</em> act is a queue-draining tool call → it speaks the queued ask → the answer round-trips → it reaches a real Claude Code session, which wakes and writes the artifact. Harness at <code>probes/elevenlabs-e2e/</code>.</td></tr>
+<tr><td>The harness can report failure</td><td><span class="tag t-ok">proven</span></td><td>Negative control with a dead socket path: exactly the two Claude legs go FAIL, the five conversation legs still PASS. 6/8.</td></tr>
+<tr><td>Any WebRTC call, either vendor</td><td><span class="tag t-block">not attempted</span></td><td>The probe drives the conversation WebSocket in <code>text_only</code>, which exercises the tool loop and the session leg but not audio transport or push-to-talk buffer management.</td></tr>
+</tbody></table>
+
+<h3>What running it cost, and what it found</h3>
+
+<p>One full run costs about <strong>110 characters</strong> of the monthly quota. The account moved 3,491 → 3,600 across both runs. The throwaway agent was deleted afterwards; only <code>Genesis Voice</code> remains.</p>
+
+<div class="card">
+<p><span class="tag t-block">defect</span> <strong>The agent claims success regardless of the tool result.</strong> In the negative control the delivery tool returned <code>{"delivered": false}</code> and the agent still said <em>"I have delivered your answer."</em></p>
+<p>This is the silent-failure shape that has bitten this estate before, now reproduced in the voice layer. The confirmation a person hears must be produced by the <strong>substrate from the tool result</strong>, never narrated by the model. An agent that can say "delivered" when nothing was delivered is worse than one that says nothing.</p>
+</div>
+
+<div class="card">
+<p><span class="tag t-major">operational</span> <strong>A session in a fresh directory blocks on the trust prompt and never registers.</strong> It does not appear in the session registry, has no socket, and is unreachable — while looking alive in <code>tmux</code>. Any automated spawn path has to clear that prompt, and any supervisor has to treat "spawned" and "reachable" as different states.</p>
+</div>
+
+<table style="display:none"><tbody>
 </tbody>
 </table>
 
@@ -329,6 +346,44 @@
 </ol>
 
 <p>Note the tool budget this must fit: the existing agent's webhooks carry <code>response_timeout_secs: 10</code> with <code>execution_mode: immediate</code>. Draining a queue is a fast read and fits comfortably. Anything that needs to <em>wait</em> for an agent must not be a synchronous tool — which is what Genesis's <code>/voice/request</code> already encodes by enqueuing and returning a ticket.</p>
+
+<h2>The interaction model</h2>
+
+<p>Decided by a four-lens panel — addressing, interaction shapes, radio and ATC precedent, and a premortem — scored by three judges on usability under real conditions, fidelity to the verified constraints, and whether it beats opening a laptop.</p>
+
+<h3>There is no level ladder</h3>
+
+<p>The obvious reading of "orchestrator, session, or other levels" is an addressable hierarchy. That was tried and cut. <strong>Depth lives in the content, not in a pointer.</strong> An arc, an initiative, a whole workflow is a <em>note</em>, and talking about it needs no address at all.</p>
+
+<p>What is addressable is exhaustively four cursor states: <strong>empty</strong> (the queue), <strong>ask</strong> (one row of the ask log), <strong>note</strong> (one living note), <strong>session</strong> (one worker, patched through). One cursor, no altitude. <code>up</code> and <code>into</code> are cut, because containment here is a graph and "up" has no answer.</p>
+
+<h3>Deixis first; a proper noun never resolves to an action</h3>
+
+<p>Movement is <code>next</code>, <code>back</code>, <code>top</code>, <code>the second one</code>. Names are allowed, but <strong>only to pull something into hand</strong>. Dispatch always targets what is already in hand, so the blast radius of any mis-hear is <em>the wrong thing in hand</em> — announced within two seconds — and never <em>work sent to the wrong repository</em>.</p>
+
+<p>This overrules the callsign discipline borrowed from radio earlier in this document. Reciting callsigns is a memory tax paid while walking down a street, and every judge scored it that way. What survives from that precedent is the <em>principle</em> — reliability from redundancy — implemented better below.</p>
+
+<h3>Confirm on measured disagreement, not as policy</h3>
+
+<p>Unconditional readback becomes boilerplate people stop hearing. Instead, three independent witnesses per utterance, held by the substrate and never by the model: the speech model's own resolution arriving as a tool-call argument, a fuzzy match of the <em>separate</em> ASR transcript against the live roster, and transcription logprobs. OpenAI notes the transcript "may diverge somewhat from the model's interpretation" — that divergence is not noise to suppress, it is the second witness, and it is the only mechanism here that <em>knows</em> it mis-heard.</p>
+
+<p>Agreement plus high confidence resolves silently, with the reply itself carrying a discriminator. Disagreement spends one turn offering discriminating <em>content</em> rather than replaying the phonemes that just failed.</p>
+
+<h3>The safety spine</h3>
+
+<p>Three lines, machine-checkable, and a better answer than either scoping voice by category or gating it behind a confirmation:</p>
+
+<ol>
+<li><strong>Open mic ⟹ no verbs exist.</strong> The acting tools are swapped out by <code>session.update</code> — physically absent, not merely discouraged.</li>
+<li><strong>Verbs ⟹ the button is held.</strong> Reversible only, with a ten-minute undo.</li>
+<li><strong>Irreversible verbs are not voice at all.</strong> Not gated — <em>unexpressible</em>. There is no merge, deploy, push, delete or spend tool in any mode.</li>
+</ol>
+
+<p>Fan-out is capped at one target per utterance. Permission laundering needs a fan-out surface, and there is not one.</p>
+
+<h3>Two modes, neither declared</h3>
+
+<p><strong>THINK</strong> — nothing in hand or a note in hand, latched mic, no verbs in existence, nothing below the highest precedence is allowed to interrupt, and the artifact is a living note under <code>docs/thinking/</code>. <strong>WORK</strong> — an ask or a session in hand, reversible verbs behind the button, the queue drains normally. Mode is derived from cursor state and mic state and echoed by an earcon. A mode the user has to declare is exactly the overhead voice was opened to avoid.</p>
 
 <h2>Open questions</h2>
 
