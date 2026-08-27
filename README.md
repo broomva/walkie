@@ -422,6 +422,37 @@ ellipsis **followed by a space**. The trailing space is load-bearing. That is a
 cheap mitigation for the latency cascade between speech recognition, a slow tool,
 and speech synthesis.
 
+## Architecture
+
+The decided architecture lives in
+[`docs/specs/2026-08-27-walkie-architecture.html`](docs/specs/2026-08-27-walkie-architecture.html).
+Short version, since the corrections above changed it twice:
+
+**An agent session is the core, and that is the point.** A Genesis-managed Claude
+Code session does the triage — deciding which of eleven pending asks are worth
+interrupting a person for, which can be answered from what is already known, and
+which need a screen because the diff matters. It orchestrates the other sessions
+and it notices when voice is the wrong channel and moves the conversation to chat.
+A deterministic service can dispatch; it cannot weigh.
+
+**A deterministic substrate carries everything that must be correct.** Postgres,
+transport, the append-only ask log, idempotent delivery, allowlists, the tool
+surface. The runtime holds no state it could query, which is what makes it
+restartable.
+
+An earlier revision of this file killed the agent at the core. That was an
+over-correction, recorded here rather than edited away: one justification for it
+was genuinely false — switching a realtime voice session between workspaces is a
+single `session.update`, not a hard problem — and that refutation was used to
+remove a component that a different and better justification supports. The two
+objections raised against it were about implementation and both already had fixes
+specified elsewhere: serialization only bites if the runtime does the work rather
+than delegating it, and context loss only bites if bindings live in context rather
+than in Postgres.
+
+Voice is a channel, not the product. Genesis already renders the chat surface;
+walkie does not invent it.
+
 ## The decision this prototype does not settle
 
 Whether walkie attaches to **sessions you do not own** — the Claude Code sessions

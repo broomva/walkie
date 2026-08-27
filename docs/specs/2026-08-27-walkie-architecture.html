@@ -1,0 +1,305 @@
+<!-- Broomva workspace · apps/walkie/docs/specs · human-read artifact · P18 -->
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>walkie — architecture and stack</title>
+<style>
+  :root {
+    --paper:      #FFFFFF;
+    --canvas:     #F3F4F6;
+    --ink:        #0C101A;
+    --slate:      #3D424D;
+    --muted:      #5F636C;
+    --edge:       #18213512;
+    --edge-vis:   #18213529;
+    --blue:       #5480C7;
+    --blue-ink:   #436EB4;
+    --blue-soft:  #5480C714;
+    --tidepool:   #009BD8;
+    --green:      #00A24F;
+    --green-soft: #00A24F14;
+    --amber:      #AF7C00;
+    --amber-soft: #AF7C0014;
+    --red:        #D42325;
+    --red-soft:   #D4232514;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--canvas); color: var(--ink);
+    font: 400 17px/1.62 ui-sans-serif, -apple-system, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;
+    letter-spacing: 0.01em;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 47rem; margin: 0 auto; padding: 5rem 1.5rem 7rem; }
+  h1 {
+    font-size: clamp(2rem, 5vw, 2.75rem); line-height: 1.12; letter-spacing: -0.022em;
+    font-weight: 400; margin: 0 0 .6rem;
+  }
+  .sub { color: var(--slate); font-size: 1.15rem; line-height: 1.55; margin: 0 0 .75rem; }
+  .meta { color: var(--muted); font-size: .82rem; letter-spacing: .03em; margin: 0 0 3rem; }
+  h2 {
+    font-size: 1.45rem; line-height: 1.25; letter-spacing: -0.014em; font-weight: 500;
+    margin: 3.5rem 0 .5rem; padding-top: 1.75rem; border-top: 1px solid var(--edge-vis);
+  }
+  h3 { font-size: 1.08rem; font-weight: 600; letter-spacing: -0.006em; margin: 2rem 0 .4rem; }
+  p { margin: 0 0 1.05rem; }
+  a { color: var(--blue-ink); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; font-size: .875em; }
+  code { background: var(--canvas); border: 1px solid var(--edge); border-radius: 4px; padding: .08em .34em; }
+  .card code { background: var(--canvas); }
+  ul, ol { margin: 0 0 1.05rem; padding-left: 1.3rem; }
+  li { margin-bottom: .4rem; }
+  .card {
+    background: var(--paper); border: 1px solid var(--edge); border-radius: 14px;
+    padding: 1.35rem 1.5rem; margin: 1.5rem 0;
+  }
+  .card > :last-child { margin-bottom: 0; }
+  .lede { font-size: 1.05rem; color: var(--slate); }
+  .tag {
+    display: inline-block; font-size: .7rem; font-weight: 600; letter-spacing: .06em;
+    text-transform: uppercase; padding: .18em .5em; border-radius: 4px; vertical-align: .12em;
+    margin-right: .4rem;
+  }
+  .t-block { background: var(--red-soft);   color: var(--red); }
+  .t-major { background: var(--amber-soft); color: var(--amber); }
+  .t-ok    { background: var(--green-soft); color: var(--green); }
+  .t-info  { background: var(--blue-soft);  color: var(--blue-ink); }
+  .scroll { overflow-x: auto; margin: 1.5rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: .93rem; background: var(--paper); }
+  th, td { text-align: left; padding: .62rem .8rem; border-bottom: 1px solid var(--edge-vis); vertical-align: top; }
+  th { font-weight: 600; font-size: .78rem; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+  tbody tr:last-child td { border-bottom: none; }
+  table { border: 1px solid var(--edge); border-radius: 12px; overflow: hidden; }
+  .flow { counter-reset: step; list-style: none; padding: 0; margin: 1.5rem 0; }
+  .flow li {
+    position: relative; padding: .1rem 0 1.1rem 2.6rem; margin: 0;
+    border-left: 1px solid var(--edge-vis); margin-left: .85rem;
+  }
+  .flow li:last-child { border-left-color: transparent; padding-bottom: 0; }
+  .flow li::before {
+    counter-increment: step; content: counter(step);
+    position: absolute; left: -.85rem; top: 0; width: 1.7rem; height: 1.7rem;
+    background: var(--ink); color: var(--paper); border-radius: 50%;
+    font-size: .78rem; font-weight: 600; display: grid; place-items: center;
+  }
+  .pull {
+    border-left: 3px solid var(--tidepool); padding: .1rem 0 .1rem 1.1rem;
+    margin: 1.6rem 0; color: var(--slate);
+  }
+  .foot { color: var(--muted); font-size: .85rem; line-height: 1.55; margin-top: 3.5rem;
+          padding-top: 1.25rem; border-top: 1px solid var(--edge-vis); }
+  @media (max-width: 640px) { .wrap { padding: 3rem 1.1rem 5rem; } body { font-size: 16px; } }
+</style>
+<div class="wrap">
+
+<h1>walkie — architecture and stack</h1>
+<p class="sub">A rethought app runtime for agentic workspaces. An agent session at the core governs the others; voice and chat are channels onto it.</p>
+<p class="meta">BRO-2362 · 2026-08-27 · supersedes the architecture recorded in the walkie README before this date</p>
+
+<p class="lede">This document is decided, not a survey. Where two options were live, one was picked and the reason is stated. Every vendor claim carries a source; where a vendor does not document something, it is marked unknown rather than guessed.</p>
+
+<h2>What walkie is, after review</h2>
+
+<p>The original framing was: talk to your agents, and they talk back. Adversarial review moved it. The finding that moved it is not technical:</p>
+
+<div class="pull">Every ask worth escalating was escalated <em>because a human needed to see evidence</em> — a diff, a failure, a blast radius. Voice replaces a reviewable, logged, textual approval with an ephemeral acoustic one, summarised by the same agent that wants the yes, and leaves no audit artifact.</div>
+
+<p>That degrades decision quality in proportion to how consequential the decision is. Compounding it, the handback-contract measurements say <strong>81% of blockers were knowable at hour 0</strong> — the bottleneck is ask <em>quality</em>, not ask <em>transport</em>.</p>
+
+<p>The resolution is not to make voice weaker. It is to stop treating voice as the product. <strong>Voice is one channel onto a runtime, and the runtime decides when voice is the wrong channel.</strong></p>
+
+<div class="card">
+<p><span class="tag t-ok">voice</span> <strong>Triage, status, and low-stakes answers.</strong> What is blocked, what changed, read me the last turn, pick between two options an agent already enumerated. Answered in-call, in under two seconds, from state already held.</p>
+<p><span class="tag t-info">escalate</span> <strong>Anything needing evidence moves to chat, and the runtime is what notices.</strong> A consequential ask, a request too complex to say out loud, or a call where recognition is failing — the runtime hands the same conversation to a screen, where the diff is visible and the approval is logged. Genesis already renders this surface; walkie does not invent it.</p>
+</div>
+
+<p>That is a better answer to the evidence problem than restricting voice by category would have been, because the boundary is judged per-ask rather than guessed in advance. It also means a poor acoustic environment degrades the <em>channel</em>, not the product.</p>
+
+<h2>The layers</h2>
+
+<table>
+<thead><tr><th>Layer</th><th>What it is</th><th>What it must never do</th></tr></thead>
+<tbody>
+<tr><td><strong>Voice edge</strong></td><td>OpenAI Realtime over WebRTC. Owns mic capture, turn-taking, barge-in, speech.</td><td>Hold state. Do work. Decide anything.</td></tr>
+<tr><td><strong>Runtime session</strong></td><td>A Genesis-managed Claude Code session. The judgment: triages what deserves your attention, decides which channel fits, orchestrates the other sessions.</td><td>Do long work inside its own turn. Hold state it could query.</td></tr>
+<tr><td><strong>Substrate service</strong></td><td>A plain Bun/Hono service. Postgres, transport, the ask log, idempotent delivery, allowlists, the tool surface.</td><td>Make judgment calls.</td></tr>
+<tr><td><strong>Worker sessions</strong></td><td>The real Claude Code sessions, reached over the documented cross-session inbox.</td><td>Receive free text that came from another worker's output.</td></tr>
+</tbody>
+</table>
+
+<h3>Why the core is an agent, and what the substrate still owns</h3>
+
+<p>One justification for an agent at the core <em>was</em> false and is worth recording as dead. The belief that switching a realtime voice session between workspaces is hard is contradicted by the API. From OpenAI's <a href="https://developers.openai.com/api/reference/resources/realtime/client-events">client-events reference</a>, verbatim:</p>
+
+<div class="pull">The client may send this event at any time to update any field except for <code>voice</code> and <code>model</code>.</div>
+
+<p><code>tools</code> and <code>instructions</code> are both swappable mid-call, so selecting a workspace is one <code>session.update</code>. Nothing needs an agent for that.</p>
+
+<p><strong>The justification that survives is a different one: triage is a judgment call.</strong> Deciding that four of eleven pending asks are worth interrupting a person for, that two can be answered from what is already known, and that one needs a screen because the diff matters — that is not routing. A deterministic service can dispatch; it cannot weigh. Neither can it notice that recognition is failing and move the conversation to chat, or decide which of thirty sessions to wake and what to ask them.</p>
+
+<p>An earlier revision of this document killed the agent anyway. That was an over-correction: a refuted justification was used to remove a component that a better justification supports. The two objections raised against it were about implementation, and both have fixes that were already specified elsewhere in this document:</p>
+
+<table>
+<thead><tr><th>Objection</th><th>Why it does not bind</th></tr></thead>
+<tbody>
+<tr><td>A single session serializes every workspace behind one turn chain, so an urgent ask queues behind a ten-minute turn.</td><td>Only if the runtime does the <em>work</em>. It decides and delegates: its turns are seconds, and the ten-minute turn belongs to a worker. Genesis's admission gate already refuses rather than queues, which surfaces contention instead of hiding it.</td></tr>
+<tr><td>Compaction silently destroys ticket-to-workspace bindings, producing confident wrong readbacks.</td><td>Only if bindings live in context. They live in Postgres and are queried. The runtime is required to hold no state it could look up — which is the same rule that makes it restartable.</td></tr>
+</tbody>
+</table>
+
+<p>So the split is: <strong>the substrate is what must be correct; the runtime is what must be smart.</strong> State, transport, idempotent delivery and allowlists are deterministic and observable. Triage, channel choice and orchestration are the agent's.</p>
+
+<h3>How the runtime stays awake</h3>
+
+<p>It is not a daemon to babysit. It is a Genesis-managed session with its own cadence — woken by an event on the ask log, by <code>/loop</code> for a recurring sweep, or by <code>/schedule</code> for time-triggered work. Between wakes it costs nothing. Genesis already owns spawn, <code>--resume</code> continuity through a persisted session id, and a per-session worktree, so session longevity is not a problem walkie has to solve.</p>
+
+<h2>The connection flow</h2>
+
+<p>Concretely, and with the parts that are easy to get wrong called out.</p>
+
+<ol class="flow">
+<li><strong>Client asks the service for a session.</strong> The service calls <code>POST /v1/realtime/client_secrets</code> with the API key. TTL is settable from 10 to 7200 seconds, default 600. The TTL governs session <em>creation</em> only — <a href="https://developers.openai.com/api/reference/resources/realtime/subresources/client_secrets/methods/create">"The session itself may continue after that time once started"</a> — so a ten-minute secret does not end a sixty-minute call, and there is no refresh endpoint because none is needed.</li>
+<li><strong>Client does the SDP exchange itself.</strong> Raw SDP body, <code>Content-Type: application/sdp</code>, bearer of the ephemeral key. This is <em>not</em> the multipart form; that is the server-side unified flow.</li>
+<li><strong>Client relays the call id to the service.</strong> The response body is a raw SDP answer, not JSON — the call id arrives in the <code>Location</code> header as <code>/v1/realtime/calls/rtc_…</code>. In the ephemeral flow only the client sees it, so relaying it is a required step, not an optimisation.</li>
+<li><strong>Service opens a sideband.</strong> <code>wss://api.openai.com/v1/realtime?call_id=…</code> with the standard API key. Per OpenAI's <a href="https://developers.openai.com/api/docs/guides/realtime-server-controls">server-controls guide</a> this is a second connection to the same session that "can be used to monitor the session, update instructions, and respond to tool calls", and it behaves like any other Realtime connection — the full client-event surface is available server-side. <strong>No plan gate, standard API key.</strong></li>
+<li><strong>Tools are served by the service, not the client.</strong> Tool calls arrive on the sideband; the service answers them and injects results with <code>conversation.item.create</code> + <code>response.create</code>.</li>
+<li><strong>Workspace switch is a <code>session.update</code></strong> swapping <code>tools</code> and <code>instructions</code> for the selected workspace. This is what the channel filter in the UI actually does.</li>
+</ol>
+
+<h3>Push-to-talk is not the default mode</h3>
+<p>Hold-to-talk requires <code>turn_detection: null</code>, and on WebRTC audio flows continuously over the media track, so the buffer must be managed explicitly: <code>input_audio_buffer.clear</code> on press, <code>commit</code> then <code>response.create</code> on release, and <code>output_audio_buffer.clear</code> to barge in. This differs from the WebSocket flow; assuming they are the same is a documented way to ship a broken button.</p>
+
+<h2>Two binding constraints</h2>
+
+<p>Both are properties of the Realtime API that the design must absorb, and both are invisible at runtime.</p>
+
+<div class="card">
+<p><span class="tag t-block">constraint</span> <strong>The 60-minute session cap is undetectable.</strong> The cap is documented. What happens at it is not, and there is <em>no expiry event, no warning, and no disconnect-reason field</em> — the only <code>session.*</code> server events are <code>session.created</code> and <code>session.updated</code>.</p>
+<p><strong>Design response:</strong> the client tracks elapsed time from <code>session.created</code> and proactively re-establishes before the cap, re-seeding context from Postgres. Never rely on a disconnect to tell you why.</p>
+</div>
+
+<div class="card">
+<p><span class="tag t-block">constraint</span> <strong>Context truncation is silent and lossy.</strong> When the window fills, the API drops the oldest messages with no summarization and no error. The user's original question can vanish mid-conversation while the model keeps answering fluently.</p>
+<p><strong>Design response:</strong> the conversation is never the source of truth. Every ask, ticket and binding lives in Postgres; the call carries a <em>projection</em> of that state, re-seeded on each new session. Set <code>session.truncation</code> deliberately rather than taking the default.</p>
+</div>
+
+<h3>The consequence that is easy to miss</h3>
+<p>Billing is per token and idle time is free — <a href="https://developers.openai.com/api/docs/guides/realtime-costs">"There is no cost currently for network bandwidth or connections"</a> — so holding a call open while an agent works costs nothing. But the whole conversation is re-sent on every response, so <em>per-turn cost rises through a session</em>, and every async answer injected into a live call permanently enlarges what is re-billed afterwards. Long calls are cheap to hold and expensive to use. That asymmetry, not idle cost, is what should shape session lifetime.</p>
+
+<h2>Stack</h2>
+
+<table>
+<thead><tr><th>Concern</th><th>Choice</th><th>Why this and not the alternative</th></tr></thead>
+<tbody>
+<tr><td>Voice</td><td>OpenAI Realtime, <code>gpt-realtime-2.1</code></td><td>ElevenLabs can also inject server-side, but gates it behind an <strong>enterprise plan</strong> and bills connection wall-clock. Its one edge is a 2-hour configurable ceiling.</td></tr>
+<tr><td>Runtime</td><td>Bun</td><td>House default; Genesis is already Bun.</td></tr>
+<tr><td>Server</td><td>Hono</td><td>Matches Genesis, so the connector work transfers.</td></tr>
+<tr><td>Language / lint</td><td>TypeScript, Biome</td><td>House default.</td></tr>
+<tr><td>Store</td><td>Postgres via Drizzle</td><td>The binding store must outlive both the call and any agent context.</td></tr>
+<tr><td>Auth</td><td>Better Auth</td><td>House default.</td></tr>
+<tr><td>Deploy</td><td>Railway for the cloud half; a host agent on the workstation or VPS</td><td>See the split below — it is not optional.</td></tr>
+<tr><td>Client v1</td><td>Installed PWA</td><td>Exercises the same WebRTC and SSE paths with no Apple account.</td></tr>
+<tr><td>Client v2</td><td>Expo dev client on Apple PushToTalk</td><td>The only documented path where a push wakes an app and the system grants it an audio session.</td></tr>
+<tr><td>TTS for artifacts</td><td>Reuse the Realtime voice, or the phone's own</td><td>A second vendor means the same agent speaks in two voices depending on whether the call was open. Drop it.</td></tr>
+</tbody>
+</table>
+
+<h3>The service splits in two, and this is structural</h3>
+<p>Reaching a Claude Code session works over a unix socket under <code>/tmp/cc-socks/</code>, and the security boundary is <strong>same-UID trust on one machine</strong>. A Railway container is neither. So:</p>
+<ul>
+<li><strong>Cloud half</strong> (Railway): ephemeral secrets, the sideband, SSE fan-out, artifact serving, push. Holds no ability to reach a session.</li>
+<li><strong>Host agent</strong> (workstation or the VPS): the only component that can talk to sessions. Reaches the cloud half outbound over Tailscale; nothing inbound is exposed.</li>
+</ul>
+<p>Treating this as one deployable is the mistake that makes the whole thing undeployable.</p>
+
+<h2>Reaching worker sessions</h2>
+
+<p>Three supported paths exist. This was the single largest unknown at the start and it is now closed.</p>
+
+<table>
+<thead><tr><th>Path</th><th>Status</th><th>Verdict</th></tr></thead>
+<tbody>
+<tr><td><a href="https://code.claude.com/docs/en/cross-session-messaging">Cross-session inbox socket</a></td><td>GA since v2.1.224</td><td><strong>Chosen.</strong> Docs explicitly sanction "a script or hook to post into a session". Proven end-to-end here: a session left idle in tmux was woken and made to execute by a plain Python script that was not a Claude Code child.</td></tr>
+<tr><td><a href="https://code.claude.com/docs/en/channels">Custom channel</a></td><td>Research preview</td><td>Purpose-built, and the only one with a documented reply path. Its contract may change. Worth adopting once stable.</td></tr>
+<tr><td>Genesis <code>claude -p</code> + <code>--resume</code></td><td>In production</td><td>Sidesteps session longevity entirely by making every turn a fresh process. The right answer for work walkie <em>originates</em>, as opposed to sessions it observes.</td></tr>
+</tbody>
+</table>
+
+<div class="card">
+<p><span class="tag t-major">trap</span> <strong>A receiver that bypasses permission prompts holds inbound messages rather than delivering them.</strong> Claude Code holds each message for approval and drops it after five minutes unless the sender attests its own permission class — and an HTTP service cannot. The naive build silently swallows every message.</p>
+<p>Needing the setting that fixes this is itself the warning: it is the same lever that turns fan-out into the permission-laundering risk below. Do not reach for it without reading that section.</p>
+</div>
+
+<h2>Delivery: one log, not two branches</h2>
+
+<p>The earlier design said "if the call is open, inject; otherwise notify". That is a decision made at one instant about a condition that changes continuously, and review enumerated six states where the user gets nothing or gets it twice — answer injected into a session torn down mid-round-trip; push fired and <em>then</em> the call reopens and also delivers; an injection landing mid-utterance and reordering against a response already generated; three answers arriving out of order across separate pushes; a call the server believes is open after a network switch killed it; a push whose artifact fetch is suspended while the phone is locked.</p>
+
+<p><strong>Replace the branch with an append-only per-user ask log.</strong> Both the injection path and the push path become <em>views</em> over it, each idempotent and individually ackable. Delivery becomes pull-based with explicit acknowledgement, so "the user actually heard it" is a state the system can represent — which under the branch design it simply cannot.</p>
+
+<h2>Security</h2>
+
+<p>This is voice-adjacent code execution on a machine with dozens of live sessions. Four risks survived review and are design inputs, not afterthoughts.</p>
+
+<div class="card">
+<p><span class="tag t-block">1</span> <strong>Cross-session permission laundering.</strong> Voice → service → a session with <em>different</em> permissions is a pattern the harness contract explicitly prohibits. Making unattended fan-out work pushes toward flattening permissions everywhere, which converts one spoken word into unreviewed execution across every repository.</p>
+<p><strong>Response:</strong> the host agent carries its own allowlist of which workspaces are reachable by voice at all, defaulting to none. Triage-only scoping means the common path never needs elevated permissions.</p>
+</div>
+
+<div class="card">
+<p><span class="tag t-block">2</span> <strong>Injection with an audio exfiltration channel.</strong> Worker output derives from repository content — READMEs, changelogs, postinstall banners, PR comments. Free text that gets actioned is a path from a crafted string to other workspaces, and the result is <em>read aloud</em>.</p>
+<p><strong>Response:</strong> an ask is structured data — ticket id, an enum, bounded fields — never free text. The service must be structurally unable to originate a workspace call from a worker-supplied string.</p>
+</div>
+
+<div class="card">
+<p><span class="tag t-major">3</span> <strong>Earshot is authentication.</strong> Anyone nearby is a principal, and barge-in is designed to yield to any incoming voice. Genesis's phone mitigation — deliver to the number on file — protects the readback, not the authority; the dangerous payload here is the word "yes".</p>
+<p><strong>Response:</strong> triage-only scoping. Nothing consequential is authorizable by voice, so a stranger's "yes" reaches nothing that matters.</p>
+</div>
+
+<div class="card">
+<p><span class="tag t-major">4</span> <strong>Fail-open has precedent in this codebase.</strong> Genesis's <code>unauthorized()</code> returns false when no token is configured, and the WhatsApp arc recorded the full failure shape: an allowlist bug denies everything, the bot looks dead, the operator sets the open flag, and every sender gets a shell.</p>
+<p><strong>Response:</strong> the service refuses to start without its secrets rather than starting permissive, and the pairing flow is built to be obviously working so nobody reaches for the bypass.</p>
+</div>
+
+<h2>Build plan</h2>
+
+<p>Dependency-ordered. Each milestone is useful alone and retires a named risk. Milestone 1 is deliberately the smallest thing that tests the assumption most likely to be wrong.</p>
+
+<table>
+<thead><tr><th>#</th><th>Milestone</th><th>Risk it retires</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><strong>Host agent, one workspace, no voice.</strong> A CLI that posts a message into a running Claude Code session and receives the reply back out.</td><td>That the reachability path works unattended, including the hold-on-bypass trap. Everything else is worthless if this is not solid.</td></tr>
+<tr><td>2</td><td><strong>Ask ingestion.</strong> A Stop hook emits a structured ask; the service stores it; an SSE stream carries it to a browser page.</td><td>That asks can be produced in a bounded shape and delivered at all. Also the first thing that is useful on its own.</td></tr>
+<tr><td>3</td><td><strong>Realtime call, read-only.</strong> Browser holds a WebRTC session; the service opens the sideband and injects a spoken summary of an ask.</td><td>The sideband, the <code>call_id</code> relay, and server-side injection — the three most fiddly mechanics.</td></tr>
+<tr><td>4</td><td><strong>Tools and workspace switching.</strong> Ask a question by voice, get an answer from stored state; switch workspace via <code>session.update</code>.</td><td>That the conversation is genuinely useful for triage — the actual product question.</td></tr>
+<tr><td>5</td><td><strong>Answer round trip.</strong> A voice answer to a low-stakes ask reaches a worker session and resolves the ticket.</td><td>End-to-end latency and the ticket state machine.</td></tr>
+<tr><td>6</td><td><strong>Session lifetime handling.</strong> Elapsed-time tracking, proactive re-establish, context re-seed from Postgres.</td><td>The undetectable 60-minute cap and silent truncation.</td></tr>
+<tr><td>7</td><td><strong>Push and artifacts.</strong> Notification plus audio for the call-closed path, over the append-only log.</td><td>Delivery races, and the phone-in-pocket case.</td></tr>
+<tr><td>8</td><td><strong>Native client.</strong> Expo dev client on PushToTalk.</td><td>Background audio, which no web client can do.</td></tr>
+</tbody>
+</table>
+
+<p>Milestones 1 and 2 need no OpenAI account, no Apple account, and no deploy. They are worth doing before any decision about the rest is made.</p>
+
+<p>Note what is <em>not</em> a milestone: standing up the runtime session. Genesis already spawns and resumes Claude Code sessions in per-session worktrees, and <code>/loop</code> and <code>/schedule</code> already give a session its own cadence. The runtime is a Genesis session with a brief, not a new piece of infrastructure — which is why milestone 1 is about reaching <em>other</em> sessions rather than about creating this one.</p>
+
+<h2>Open questions</h2>
+
+<table>
+<thead><tr><th>Question</th><th>Blocking?</th><th>Default if unanswered</th></tr></thead>
+<tbody>
+<tr><td>Where exactly does the runtime draw the voice-to-chat line, and is that policy or a learned judgment?</td><td>No — it can start conservative</td><td>Start with an explicit policy the runtime applies, and let it widen once its calls can be reviewed against outcomes.</td></tr>
+<tr><td>Host agent on the workstation or the VPS?</td><td>No</td><td>Workstation first; it is where the sessions already are.</td></tr>
+<tr><td>Is <code>com.apple.developer.push-to-talk</code> grantable directly or does it need an Apple capability request?</td><td>No, until milestone 8</td><td>Assume it may need a request; start it early.</td></tr>
+<tr><td>Create <code>github.com/broomva/walkie</code>?</td><td>No</td><td>Stay local; nothing is lost by deferring.</td></tr>
+</tbody>
+</table>
+
+<h2>What this document does not cover</h2>
+
+<p>Three things were deliberately left out rather than guessed. ElevenLabs' <code>execution_mode: "async"</code> exists and is described as best for long-running operations, but appears only in API-reference schema dumps with no statement of whether an async result ever reaches the model — it is not designed on here. Neither vendor documents a resume path after a network drop, so reconnection is treated as a new session plus re-seed. And no tool-result timeout is documented on OpenAI Realtime, which is convenient for holding a call open while an agent works, but is an absence of documentation rather than a guarantee.</p>
+
+<p class="foot">Sources are linked inline and every vendor claim was read on the vendor's own documentation. Two claims in earlier revisions of the walkie README were wrong and are corrected here: that switching workspaces mid-call is hard, and that the cross-session messaging socket is undocumented. The second was mine. The router architecture that both errors supported has been removed rather than patched.</p>
+
+</div>
+</html>
