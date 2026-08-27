@@ -1,0 +1,109 @@
+# Ask ledger — walkie architecture (BRO-2362)
+# Every input the arc needs that only a person can supply. Checked at hour 0
+# against what is already on the machine, so nothing already satisfied is asked.
+arc: walkie-architecture
+ticket: BRO-2362
+tz: America/Bogota
+
+satisfied:
+  - id: openai-key
+    class: credential
+    note: OPENAI_API_KEY present in the environment. Realtime path unblocked.
+  - id: elevenlabs-key
+    class: credential
+    note: ELEVENLABS_API_KEY in ~/broomva/.env.local. Already used by talkback.
+  - id: build-tooling
+    class: artifact
+    note: bun 1.3.14, railway 4.31.0, eas-cli 16.32.0 installed.
+
+asks:
+  - id: github-remote
+    class: authority
+    gates: [publishing the walkie repo]
+    question: Create github.com/broomva/walkie, private or public?
+    default: hold — the repo works fine local-only; nothing is lost by deferring
+    reversible: yes, a remote can be added at any time
+    exhausted: [read, standing-grant, delegate, reroute, loop, default]
+
+  - id: apple-signing
+    class: credential
+    gates: [native client on device, push notifications, background audio]
+    question: Is there an Apple Developer account available for signing and APNs?
+    finding: security find-identity reports 0 valid codesigning identities
+    default: prototype as a web client first; it exercises the same WebRTC and SSE
+      code paths and needs no signing
+    reversible: yes, the client is the last layer to harden
+    exhausted: [read, standing-grant, delegate, reroute, loop, default]
+
+  - id: railway-auth
+    class: credential
+    gates: [deploying the edge]
+    question: railway login needed before any deploy step
+    default: run the edge locally over Tailscale until a deploy is actually wanted
+    reversible: yes
+    exhausted: [read, standing-grant, delegate, reroute, loop, default]
+
+deferred_until_research_lands:
+  - id: voice-vendor
+    class: decision
+    note: OpenAI Realtime vs ElevenLabs Agents. Asking before the transport
+      research returns would make the human decide blind.
+  # RESOLVED by research — moved out of deferred, kept here for the audit trail.
+  # Verdict: PWA for the v1 interaction-loop prototype, scoped honestly as
+  # notify-and-open; Expo dev-client + Apple PushToTalk for the actual product.
+  # A PWA cannot play a readback or capture mic while backgrounded, cannot wake
+  # from terminated, and Safari REVOKES the push permission if a push is not
+  # user-visible. That is not a maturity gap; there is no web analogue to
+  # UIBackgroundModes.
+  - id: router-host
+    class: decision
+    note: VPS (srv1692698) vs local Mac vs cloud. Depends on what reaches a
+      Claude Code session in a supported way.
+
+decisions:
+  - id: no-messaging-socket
+    taken: CLAUDE_CODE_MESSAGING_SOCKET is excluded as an architectural spine.
+    why: undocumented, per-PID, and it would break silently on upgrade.
+    undo: one commit, if research shows it is in fact supported.
+  - id: voice-not-brain
+    taken: the realtime model owns capture and speech only; a Claude Code session
+      holds state and does the work.
+    why: a turn runs 9s-10min and a realtime call will not hold for it.
+    undo: one commit.
+
+  - id: ptt-entitlement-approval
+    class: authority
+    gates: [the native client, i.e. the actual product]
+    question: In the Apple developer portal, is com.apple.developer.push-to-talk
+      grantable directly or does it require an Apple capability request?
+    finding: NOT STATED in Apple's docs. The setup guide says to add it in Xcode
+      directly, which suggests ungated, but the capability-requests page does not
+      enumerate which capabilities are managed.
+    why_it_matters: if it needs Apple approval with a justification, that is a
+      schedule item and must be started early, not discovered at build time.
+    default: prove the interaction loop on the PWA first; nothing about that work
+      is wasted, and it is what tells us whether the native spend is warranted
+    reversible: yes
+    exhausted: [read, standing-grant, delegate, reroute, loop, default]
+
+hazards:
+  - id: ptt-transmission-requires-foreground
+    note: PushToTalk lets the agent's readback reach you while the phone is
+      pocketed, but INITIATING transmission requires the app in the foreground or
+      a PTTAccessory / headset play-pause button, which the system maps to
+      begin-end transmission. "Hold to talk without taking the phone out" is a
+      headset-button feature, not a screen-button one. This changes the product,
+      not just the implementation.
+  - id: pushkit-is-the-wrong-path
+    note: PushKit requires CallKit (iOS 13+ SDK), the system TERMINATES an app
+      that fails to report a call, and App Store 2.5.4 is a purpose test that
+      using VoIP push for agent readbacks would fail. PushToTalk is the sanctioned
+      analogue. Do not route this product through PushKit.
+  - id: expo-av-removed
+    note: expo-av is removed in SDK 55; use expo-audio. react-native-webrtc cannot
+      run in Expo Go. No Expo PushToTalk module exists — writing one is the single
+      largest unbudgeted item in the native path.
+  - id: anthropic-key-forces-api-billing
+    note: ANTHROPIC_API_KEY is present in ~/broomva/.env.local. If it is exported
+      into the router host's environment, that session bills API credits instead
+      of the subscription. The router host must NOT export it.

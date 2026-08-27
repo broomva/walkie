@@ -239,6 +239,68 @@ a persistent agent answering instantly from state it already holds is exactly
 what realtime is for. The deferral now applies only to ride-along narration of
 long work, which stays on the artifact path.
 
+## The client, and the one thing a web app cannot do
+
+Verified against Apple, WebKit, MDN and Expo primary sources.
+
+**Apple ships a framework for exactly this product.** [Push to Talk](https://developer.apple.com/documentation/pushtotalk)
+(iOS 16+) is the only documented path where a push wakes a backgrounded or
+terminated app and *the system* activates its audio session — for playback and
+for the microphone. Apple's own guide: "This allows for recording audio even if
+the app is in the background."
+
+Two paths that look adjacent are wrong:
+
+- **`audio` background mode alone** sustains a session that is already running; it
+  does not get you woken with one.
+- **PushKit/CallKit is a trap.** PushKit requires CallKit on the iOS 13+ SDK, the
+  system *terminates* an app that fails to report a call, and App Store 2.5.4 is a
+  purpose test ("background services for their intended purposes") that agent
+  readbacks delivered over VoIP push would fail. PushToTalk is the sanctioned
+  analogue.
+
+### What a PWA cannot do
+
+Not a maturity gap that a future Safari closes — there is no web-facing analogue
+to `UIBackgroundModes`, and WebKit has stated the Push API "is not an invitation
+for silent background runtime."
+
+- Play a readback while backgrounded or locked. Silent push is forbidden *and*
+  punished: Safari **revokes the push permission** for a site that does not present
+  the notification. A service worker has no DOM and no audio surface.
+- Capture microphone while backgrounded or locked.
+- Wake from terminated. No analogue to `PKPushRegistry` or `PTChannelManager`.
+- Run at all without a manual Home Screen install — iOS web push is install-gated
+  and there is no install-prompt API.
+
+### The decision
+
+**v1 is an installed PWA, scoped honestly as notify-and-open** — push, banner, tap,
+foreground page with working hold-to-talk and playback. Every piece is
+documented-supported, needs no Apple account, and it validates the actual product
+risk: whether an agent that talks to you helps. Do not spend the native budget
+before that question is answered.
+
+**The product is an Expo dev-client app on PushToTalk**, distributed through the
+paid Developer Program and TestFlight. `react-native-webrtc` cannot run in Expo
+Go, so a custom dev client is required regardless; `expo-av` is removed in SDK 55
+and `expo-audio` replaces it.
+
+### The landmine
+
+PTT lets the readback reach you while the phone is pocketed. It does **not** let
+you start talking that way: transmission can only begin from the foreground, or
+from a Bluetooth PTT accessory or headset play-pause button that the system maps
+to begin/end transmission. **"Hold to talk without taking the phone out" is a
+headset-button feature, not a screen-button one.** That is a product decision, not
+an implementation detail.
+
+Two items are unresolved rather than guessed: whether
+`com.apple.developer.push-to-talk` is grantable directly or needs an Apple
+capability request is **not stated** in the docs, and Expo has no PushToTalk
+module, so that is a custom native module and the largest unbudgeted item on the
+native path.
+
 ## The decision this prototype does not settle
 
 Whether walkie attaches to **sessions you do not own** — the Claude Code sessions
