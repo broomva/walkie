@@ -49,6 +49,21 @@ asks:
     reversible: yes — the voice layer sits behind one seam
     exhausted: [read, standing-grant, delegate, reroute, loop, default]
 
+  - id: elevenlabs-key-quota
+    class: credential
+    gates: [audio probes that synthesize via the vendor; any production TTS volume]
+    question: The API key named "broomva" carries a per-key quota of 10 credits and
+      had 3 left. Raise it, or issue an uncapped key?
+    finding: the ACCOUNT shows 3,600 of 130,958 characters used, so the
+      subscription endpoint gives no hint that a key-level cap exists. The failure
+      only appears mid-request as quota_exceeded naming the key.
+    workaround_taken: the audio probe now synthesizes its test speech locally with
+      say + ffmpeg instead of the vendor's TTS, so it consumes no key quota at
+      all. That is better probe design regardless of the cap.
+    default: leave the cap alone; nothing in the validated path needs vendor TTS
+    reversible: yes
+    exhausted: [read, standing-grant, delegate, reroute, loop, default]
+
   - id: railway-auth
     class: credential
     gates: [deploying the edge]

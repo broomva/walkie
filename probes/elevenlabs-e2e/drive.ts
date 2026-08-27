@@ -76,7 +76,10 @@ let sawAnswerTool = false;
 const finish = async (code: number) => {
   if (EXPECT_CLAUDE) {
     // Give the session a moment to wake and act, then look for its artifact.
-    const target = `${DIR}/session/answered.txt`;
+    // Resolve from the session registry's own cwd, never from a symlink this
+  // script maintains. A missing file cannot distinguish "the session did not
+  // act" from "I looked in the wrong place" — and the second one happened.
+  const target = `${SESSION.cwd}/answered.txt`;
     let found = false, body = "";
     for (let i = 0; i < 40; i++) {
       if (existsSync(target)) { body = readFileSync(target, "utf8").trim(); found = body.length > 0; if (found) break; }

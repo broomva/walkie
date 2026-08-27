@@ -1,2 +1,6 @@
 .DS_Store
 node_modules/
+.agent_id
+.session*.json
+.say.aiff
+*.log

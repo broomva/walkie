@@ -6,11 +6,18 @@ const KEY = process.env.ELEVENLABS_API_KEY;
 if (!KEY) { console.error("no ELEVENLABS_API_KEY"); process.exit(1); }
 
 const body = {
-  name: "walkie e2e probe (delete me)",
+  name: `walkie e2e probe ${process.env.WALKIE_AUDIO === "1" ? "audio" : "text"} (delete me)`,
   conversation_config: {
     conversation: {
-      text_only: true,              // loop first; audio is a separate, shorter run
+      // WALKIE_AUDIO=1 switches this probe from the text loop to the audio loop.
+      // client_events must be listed explicitly: audio, user_transcript and
+      // interruption are opt-in and the defaults do not include them.
+      text_only: process.env.WALKIE_AUDIO !== "1",
       max_duration_seconds: 300,
+      client_events: [
+        "conversation_initiation_metadata", "agent_response", "user_transcript",
+        "client_tool_call", "agent_tool_response", "audio", "interruption", "ping",
+      ],
     },
     agent: {
       first_message: "",            // agent must not speak before draining the queue
