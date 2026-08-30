@@ -5,7 +5,7 @@
 
 ## TL;DR
 
-Thirty-four screens, both themes, one component set, three shaders and two spec documents.
+Fifty screens, both themes, one component set, three shaders and two spec documents.
 Everything needed to start the Swift client exists. The three things a builder must **not**
 silently decide are listed under *Do not re-decide*; everything else is fair game.
 
@@ -18,7 +18,7 @@ Read in this order: the amendment, this file, then the canvas.
 | Branch | `design/walkie-app-interface` (off `main`, not pushed, no PR) |
 | Commit | `e56eacb` — design(walkie): the whole interface, both themes, and the handoff to build it |
 | Working tree | clean |
-| Committed | 34 screen exports, `WalkieTokens.swift`, 5 shaders, this handoff, the spec amendment |
+| Committed | 50 screen exports, `WalkieTokens.swift`, 5 shaders, this handoff, the spec amendment |
 | **Not committed** | **`designs/walkie.pen` — see First action** |
 
 ### First action
@@ -37,7 +37,7 @@ git commit -m "design(walkie): the canvas source for the interface (BRO-2362)"
 ```
 
 Then push the branch and open a PR. If the save produces a `.pen` that does *not* contain
-34 `App · ` frames, the work was lost and this handoff is describing artefacts that can no
+50 `App · ` frames, the work was lost and this handoff is describing artefacts that can no
 longer be edited — check before assuming.
 
 ## Where everything is
@@ -75,15 +75,21 @@ need the client at all. The client can start in parallel, in this order:
 
 ## Screen inventory
 
-Grouped as they sit on the canvas. Filenames are the slug plus `-dark`.
+Grouped as they sit on the canvas. Filenames are the slug plus `-dark`; see
+`docs/design/screens/INDEX.md` for the full list.
 
-- **Entry** — pair · microphone · connecting · host-offline · off-tailnet · empty
+- **Onboarding** — welcome · scope-explainer · pair · microphone · microphone-denied ·
+  notifications · add-workspace · ready
+- **Entry** — connecting · host-offline · off-tailnet · empty
 - **Bench** — home · home-all-quiet · switcher · standing · routine
 - **Voice** — orchestrator · store-answered · escalated · session-idle · you-talking ·
   walkie-talking · barge-in · degraded · re-established
 - **Work** — session-seaslug · look-contained · look-needs-a-screen · look-approved ·
   look-sent-back · ask-low-stakes · ask-consequential · ask-answered · receipts
 - **Threads and system** — thread-orchestrator · thread-seaslug · dispatch-sent · push · access
+- **Settings** — settings · settings-turn-taking · settings-voice · settings-notifications ·
+  settings-appearance · settings-diagnostics
+- **Instances** — workspaces · workspace-seaslug · orchestrator-scope · history
 
 ## The orb, concretely
 
@@ -140,7 +146,7 @@ not an implementation detail.
   Understop is nearly there already. A shader does not stop for free the way a keyframe does.
 - **Type scale.** The canvas runs 11/13/15/17; the design system specifies 12/14/16/18/22/24/28.
   Flagged three times and deliberately not swept, because it moves every screen.
-- **Notification permission, mic-denied and pair-failed** have no screens.
+- **Pair-failed** has no screen. Notification permission and mic-denied now do.
 - **Thread and receipts empty states** have no screens.
 - **No account concept anywhere.** Possibly correct — the tailnet is the identity — but it
   is undecided rather than decided.
