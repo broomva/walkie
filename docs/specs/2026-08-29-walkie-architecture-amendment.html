@@ -1,0 +1,169 @@
+<!-- Broomva workspace · apps/walkie/docs/specs · human-read artifact · P18 -->
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>walkie — architecture amendment</title>
+<style>
+  :root {
+    --paper:      #FFFFFF;
+    --canvas:     #F3F4F6;
+    --ink:        #0C101A;
+    --slate:      #3D424D;
+    --muted:      #5F636C;
+    --edge:       #18213512;
+    --edge-vis:   #18213529;
+    --blue:       #5480C7;
+    --blue-ink:   #436EB4;
+    --blue-soft:  #5480C714;
+    --tidepool:   #009BD8;
+    --green:      #00A24F;
+    --green-soft: #00A24F14;
+    --amber:      #AF7C00;
+    --amber-soft: #AF7C0014;
+    --red:        #D42325;
+    --red-soft:   #D4232514;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--canvas); color: var(--ink);
+    font: 400 17px/1.62 ui-sans-serif, -apple-system, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;
+    letter-spacing: 0.01em;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 47rem; margin: 0 auto; padding: 5rem 1.5rem 7rem; }
+  h1 {
+    font-size: clamp(2rem, 5vw, 2.75rem); line-height: 1.12; letter-spacing: -0.022em;
+    font-weight: 400; margin: 0 0 .6rem;
+  }
+  .sub { color: var(--slate); font-size: 1.15rem; line-height: 1.55; margin: 0 0 .75rem; }
+  .meta { color: var(--muted); font-size: .82rem; letter-spacing: .03em; margin: 0 0 3rem; }
+  h2 {
+    font-size: 1.45rem; line-height: 1.25; letter-spacing: -0.014em; font-weight: 500;
+    margin: 3.5rem 0 .5rem; padding-top: 1.75rem; border-top: 1px solid var(--edge-vis);
+  }
+  h3 { font-size: 1.08rem; font-weight: 600; letter-spacing: -0.006em; margin: 2rem 0 .4rem; }
+  p { margin: 0 0 1.05rem; }
+  a { color: var(--blue-ink); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; font-size: .875em; }
+  code { background: var(--canvas); border: 1px solid var(--edge); border-radius: 4px; padding: .08em .34em; }
+  .card code { background: var(--canvas); }
+  ul, ol { margin: 0 0 1.05rem; padding-left: 1.3rem; }
+  li { margin-bottom: .4rem; }
+  .card {
+    background: var(--paper); border: 1px solid var(--edge); border-radius: 14px;
+    padding: 1.35rem 1.5rem; margin: 1.5rem 0;
+  }
+  .card > :last-child { margin-bottom: 0; }
+  .lede { font-size: 1.05rem; color: var(--slate); }
+  .tag {
+    display: inline-block; font-size: .7rem; font-weight: 600; letter-spacing: .06em;
+    text-transform: uppercase; padding: .18em .5em; border-radius: 4px; vertical-align: .12em;
+    margin-right: .4rem;
+  }
+  .t-block { background: var(--red-soft);   color: var(--red); }
+  .t-major { background: var(--amber-soft); color: var(--amber); }
+  .t-ok    { background: var(--green-soft); color: var(--green); }
+  .t-info  { background: var(--blue-soft);  color: var(--blue-ink); }
+  .scroll { overflow-x: auto; margin: 1.5rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: .93rem; background: var(--paper); }
+  th, td { text-align: left; padding: .62rem .8rem; border-bottom: 1px solid var(--edge-vis); vertical-align: top; }
+  th { font-weight: 600; font-size: .78rem; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+  tbody tr:last-child td { border-bottom: none; }
+  table { border: 1px solid var(--edge); border-radius: 12px; overflow: hidden; }
+  .flow { counter-reset: step; list-style: none; padding: 0; margin: 1.5rem 0; }
+  .flow li {
+    position: relative; padding: .1rem 0 1.1rem 2.6rem; margin: 0;
+    border-left: 1px solid var(--edge-vis); margin-left: .85rem;
+  }
+  .flow li:last-child { border-left-color: transparent; padding-bottom: 0; }
+  .flow li::before {
+    counter-increment: step; content: counter(step);
+    position: absolute; left: -.85rem; top: 0; width: 1.7rem; height: 1.7rem;
+    background: var(--ink); color: var(--paper); border-radius: 50%;
+    font-size: .78rem; font-weight: 600; display: grid; place-items: center;
+  }
+  .pull {
+    border-left: 3px solid var(--tidepool); padding: .1rem 0 .1rem 1.1rem;
+    margin: 1.6rem 0; color: var(--slate);
+  }
+  .foot { color: var(--muted); font-size: .85rem; line-height: 1.55; margin-top: 3.5rem;
+          padding-top: 1.25rem; border-top: 1px solid var(--edge-vis); }
+  @media (max-width: 640px) { .wrap { padding: 3rem 1.1rem 5rem; } body { font-size: 16px; } }
+</style>
+<div class="wrap">
+
+<h1>walkie — architecture amendment</h1>
+<p class="sub">Five sections that supersede or ground parts of the 27 August document. The original stands except where named here.</p>
+<p class="meta">BRO-2362 · 2026-08-29 · amends <code>2026-08-27-walkie-architecture.html</code></p>
+
+<p class="lede">The 27 August document is still the reference for scope, security, delivery and the Realtime constraints — none of that moved. What moved is the runtime shape, the client, the deployment, and the state vocabulary. Each section below names the passage it replaces, so the two can be read together without guessing which is current.</p>
+
+<h2>1 · An orchestrator plane, beside the fast path</h2>
+<p><span class="tag t-major">amends</span> “Why the routing layer is not an agent”</p>
+<p>That section rejected a long-lived Claude session as the router. The rejection stands for a router. It does not extend to an agent elsewhere in the system, and the design now has one.</p>
+<p>Three planes answer in parallel rather than three layers stacking:</p>
+<div class="scroll"><table>
+<thead><tr><th>Plane</th><th>Owns</th><th>Answers in</th><th>Never</th></tr></thead>
+<tbody>
+<tr><td><strong>Reflex</strong></td><td>Every ask, ticket and binding in Postgres; the tool surface the voice layer calls</td><td>Under two seconds, always</td><td>Thinks, decides, or holds an opinion</td></tr>
+<tr><td><strong>Judgement</strong></td><td>Triage, moving work between sessions, and the conversation you are having</td><td>Seconds to minutes, and that is allowed</td><td>Holds the only copy of anything</td></tr>
+<tr><td><strong>Direct</strong></td><td>One worker session, by voice or chat, with nothing in between</td><td>Whatever that session takes</td><td>Routes or speaks for another session</td></tr>
+</tbody></table></div>
+
+<h3>What this does to the original three arguments</h3>
+<p><span class="tag t-ok">retired</span> The justification was false — switching is one <code>session.update</code>. Correct, and unchanged. The orchestrator is therefore <em>not</em> justified by routing; workspace switching stays on the fast path. Its justification is judgement, which is a separate claim that has to carry itself.</p>
+<p><span class="tag t-block">still binding</span> A single session serializes every workspace behind one turn chain. Contained only by keeping the orchestrator off the critical path. <em>What is blocked</em>, <em>read me the last turn</em>, and every ask answer are served from Postgres. The moment the orchestrator is what answers those, this argument kills the design a second time.</p>
+<p><span class="tag t-block">still binding</span> Compaction destroys ticket-to-workspace bindings. Contained by giving it nothing authoritative to lose. Bindings live in the store; the orchestrator reads them like any other client; the thread is a projection, never the record. It is then free to compact.</p>
+
+<div class="pull">The reframe worth arguing with: the document’s own evidence says 81% of blockers were knowable at hour 0 and the bottleneck is ask quality, not ask transport. The orchestrator plane is the only part of walkie that touches ask quality. On that evidence it is not a risky addition to a settled design — it is the part that addresses the stated problem, and the voice edge is the accessory.</div>
+
+<h2>2 · Native Swift client, host-resident Genesis, one tailnet</h2>
+<p><span class="tag t-major">amends</span> “The service splits in two, and this is structural” and the Client v1/v2 rows of the stack table</p>
+<p>The split existed because a Railway container can satisfy neither same-UID trust nor single-machine locality. A host-resident Genesis satisfies both by construction, and a native client can join the tailnet. So the split is not structural — it was a consequence of choosing Railway.</p>
+<ol class="flow">
+<li><strong>phone ⇄ host, over Tailscale.</strong> Session state and turn events over the WebSocket Genesis already serves at <code>/ws?thread=…</code>; the ask log, ephemeral-secret minting, the call-id relay and typed dispatches over the same Hono surface. Nothing inbound is exposed; the tailnet is the authentication boundary, which is a stronger statement than the bearer check it replaces.</li>
+<li><strong>phone ⇄ OpenAI, over the internet.</strong> The WebRTC media path only. The client still performs its own SDP exchange with the ephemeral key. Once up, this leg does not need the host.</li>
+<li><strong>host ⇄ OpenAI, over the internet.</strong> The sideband with the standard API key, and the tool calls Genesis answers. Unchanged in substance; it simply runs on the workstation.</li>
+<li><strong>host → APNs → phone.</strong> Outbound, so no inbound exposure and no cloud relay.</li>
+</ol>
+<p><span class="tag t-block">cost</span> The host becomes a single point. With a cloud half an ask could be queued and pushed while the workstation slept; now a sleeping host means nothing reaches you. This is a product decision and should be recorded as one rather than discovered.</p>
+<p><span class="tag t-major">cost</span> Onboarding gains a dependency. The phone cannot silently join a tailnet, so first run is two products: Tailscale, then walkie.</p>
+<p><span class="tag t-info">new state</span> Off-tailnet is not host-offline. The host may be healthy and simply unreachable, and the remedy is on the phone. It needs its own screen and its own words.</p>
+
+<h2>3 · Hold to talk is the default; full duplex is preserved</h2>
+<p><span class="tag t-info">resolves</span> “Push-to-talk is not the default mode”</p>
+<p>The original correctly notes that hold-to-talk requires <code>turn_detection: null</code> and explicit buffer management on WebRTC — <code>input_audio_buffer.clear</code> on press, <code>commit</code> then <code>response.create</code> on release, <code>output_audio_buffer.clear</code> to barge in. That choreography is accepted.</p>
+<p>Hold to talk is the default: the product is named after the gesture, the mic stays shut between turns, and earshot-as-authentication is a far smaller surface when the mic is closed. Open mic remains available per session, because wiring WebRTC against a plain audio session — rather than adopting Apple’s PushToTalk framework — keeps full duplex. Adopting that framework would have made this a one-way door; not adopting it means the client choice does not foreclose the interaction choice.</p>
+<p>Barge-in works in both modes. Under the default you press to cut in, and the overlap while walkie’s audio ducks out is real rather than a hard switch — which is why the interface shows both voices during it.</p>
+
+<h2>4 · Two work signals, and where voice may approve</h2>
+<p><span class="tag t-info">adds</span> vocabulary the original did not carry</p>
+<p><strong>Undertow</strong> is the running signal — the design system’s existing live signal, unchanged. <strong>Understop</strong> is its sibling for work that has halted on you: identical motion, a cyan palette instead of blue. Giving paused its own geometry was tried three ways and failed each time — a held arc read as a rendering fault, a fill read as a progress meter, and a drawn level read as a sliced object. Same weather, different colour, is the version that survived.</p>
+<p><strong>Approval by voice is conditional and machine-checked.</strong> The original puts authorising consequential or irreversible actions by voice out of scope, and cites triage-only scoping as the response to earshot being authentication. That holds. The amendment is narrower: a completed run may be approved by voice <em>only</em> when the host agent can prove containment — no merge, no push, no delete, no migration, revertible in one command. The proof is computed from the run’s diff and target by the service. It is never asserted by the model, and never inferred from a summary produced by the agent that wants the yes. Where containment cannot be proven, voice may open the screen and may not press the button.</p>
+
+
+<h2>5 · What Genesis already provides, and what walkie must build</h2>
+<p><span class="tag t-info">grounds</span> read out of <code>apps/genesis</code>, not assumed</p>
+<p>The design was drafted against the architecture rather than against the engine, and three things needed correcting once the code was read.</p>
+<h3>The phase machine is Genesis&rsquo;, not ours</h3>
+<p><code>RunPhase = "idle" | "running" | "awaiting" | "blocked" | "done"</code>
+(<code>packages/projection/src/reducer.ts</code>). walkie&rsquo;s plain-voice states map onto it but not one to one:
+<em>Running</em> is <code>running</code>, <em>Needs&nbsp;you</em> is <code>awaiting</code>, <em>Stuck</em> is <code>blocked</code>,
+<em>Done</em> is <code>done</code>. <em>Queued</em> has no phase &mdash; <code>idle</code> is a thread that has never run, which is not the same claim.
+<em>Standing</em> has none at all; cadence is walkie&rsquo;s and the reducer knows nothing about it.</p>
+<div class="pull">The useful discovery: <code>awaiting</code> is entered when the agent calls <code>AskUserQuestion</code>, and the reducer captures <code>pendingQuestion</code> off that tool call. A walkie ask is therefore a tool invocation with a schema, and its named options are the tool&rsquo;s options. &ldquo;An ask is structured data, never free text&rdquo; is already true in the engine rather than a rule walkie has to impose on it.</div>
+<h3>The transport is a WebSocket</h3>
+<p>Genesis upgrades with <code>createBunWebSocket</code> and the client connects per thread at <code>/ws?thread=…</code>. Section 2 above previously said SSE; that was assumed and has been corrected. walkie may add a fan-out of its own, but it cannot describe what exists today as SSE.</p>
+<h3>Names, taken from the record</h3>
+<p>Branches are <code>genesis/&lt;key&gt;</code> for a worktree session, or the repository&rsquo;s current branch when the session runs at the root &mdash; the design had invented <code>run/&lt;key&gt;</code>. <code>noWorktree</code> is a posture bound stickily per session, so &ldquo;worktree per run&rdquo; is true of some sessions and false of others. <code>confined</code> is the real spawn-hardening flag: true drops every inherited MCP server, false carries the operator&rsquo;s. Path confinement does not reach MCP, so this flag is the only thing that does, and walkie&rsquo;s workspace screen now surfaces it.</p>
+<h3>What is ours to build</h3>
+<p>Genesis has no gate, no approve verb, no voice-reachability allowlist, no standing routines, no append-only per-user ask log, no containment proof, and no orchestrator plane. Every screen showing one of those is a specification rather than an integration, and should be read that way. <code>POST /control</code> offers <code>reset · interrupt · status · archive · unarchive · rename</code> &mdash; walkie&rsquo;s <em>Interrupt</em> is that interrupt and its <em>Send back</em> is a <code>POST /message</code>, but its <em>Approve</em> has no counterpart today.</p>
+<p>There is already a voice channel in Genesis (<code>apps/api/src/voice.ts</code>, BRO-2228), but it is a different product &mdash; an ElevenLabs phone agent with voice for intake and WhatsApp for delivery. Its governing principle is the one this document argues for independently: nothing in that handler runs an agent; every path answers from state already held, or enqueues and returns.</p>
+
+<h2>What is unchanged</h2>
+<p>Scope, in and out. All four security responses — the host allowlist defaulting to none, asks as structured data rather than free text, triage-only scoping against earshot, and refusing to start without secrets. The append-only per-user ask log with idempotent, individually ackable views. Every Realtime constraint: the undetectable 60-minute cap, silent lossy truncation, and the billing asymmetry that makes long calls cheap to hold and expensive to use. The build plan and its dependency order.</p>
+
+<p class="foot">Companion artefact: the full interface design — 34 screens, the component set, the two work signals, the orb shader, and the ambient layer — lives on the pen canvas at <code>apps/walkie/designs/walkie.pen</code>. Where this document and that canvas disagree, this document is the record.</p>
+
+</div>
