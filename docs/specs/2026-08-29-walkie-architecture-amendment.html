@@ -91,8 +91,41 @@
           padding-top: 1.25rem; border-top: 1px solid var(--edge-vis); }
   @media (max-width: 640px) { .wrap { padding: 3rem 1.1rem 5rem; } body { font-size: 16px; } }
 </style>
+<style>
+  .superseded {
+    --sup-bg:#FFF8E6; --sup-edge:#AF7C0055; --sup-ink:#5A4300; --sup-accent:#AF7C00;
+    background:var(--sup-bg); border:1px solid var(--sup-edge); border-left:4px solid var(--sup-accent);
+    border-radius:0 8px 8px 0; padding:1rem 1.2rem; margin:0 0 2rem;
+    font:15px/1.6 ui-sans-serif,-apple-system,system-ui,sans-serif; color:var(--sup-ink);
+  }
+  .superseded b { font-weight:700; }
+  .superseded a { color:inherit; text-underline-offset:2px; }
+  .superseded code { font:.86em ui-monospace,Menlo,monospace; background:#AF7C0018;
+                     padding:.1em .34em; border-radius:4px; }
+  .superseded .sup-lbl { display:block; font-size:.68rem; font-weight:800; letter-spacing:.09em;
+                         text-transform:uppercase; color:var(--sup-accent); margin-bottom:.45rem; }
+  .superseded p { margin:.5rem 0 0; }
+  .superseded p:first-of-type { margin-top:0; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .superseded {
+      --sup-bg:#2A2313; --sup-edge:#D9A63C55; --sup-ink:#E8D9AE; --sup-accent:#D9A63C;
+    }
+  }
+  :root[data-theme="dark"] .superseded {
+    --sup-bg:#2A2313; --sup-edge:#D9A63C55; --sup-ink:#E8D9AE; --sup-accent:#D9A63C;
+  }
+</style>
+
 <div class="wrap">
 
+<div class="superseded">
+<span class="sup-lbl">Superseded — 2026-08-30 · BRO-2382</span>
+<p>This document is <b>no longer a plan</b>. The declared target architecture is
+<a href="../../../../orca/workspaces/broomva/goldeye/docs/specs/2026-08-30-walkie-target-architecture.html"><code>2026-08-30-walkie-target-architecture.html</code></a>; where that document and this
+one disagree, <b>it</b> is the record.</p>
+<p><b>What survives, and was right:</b> the ask log genuinely does not exist in Genesis; the phase machine, branch naming and <code>confined</code> corrections; and the Push-to-Talk call — the gesture, not the framework — which is now the declared posture. <b>What was wrong:</b> the deployment split was not a Railway artifact. Genesis already ships an <code>ExecutionHost</code> seam with three hosts and the credential tier encoded in the type, and it is host-resident today because the workspace read paths are filesystem-bound. The orchestrator plane is deferred to maloca's escalate branch, not cancelled.</p>
+<p>Kept readable for its reasoning, which is still worth reading. Do not build from it.</p>
+</div>
 <h1>walkie — architecture amendment</h1>
 <p class="sub">Five sections that supersede or ground parts of the 27 August document. The original stands except where named here.</p>
 <p class="meta">BRO-2362 · 2026-08-29 · amends <code>2026-08-27-walkie-architecture.html</code></p>

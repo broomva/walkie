@@ -1,5 +1,19 @@
 # walkie — design to build
 
+> **Amended 2026-08-30 (BRO-2382).** The design is intact and still the reference. **The build order below
+> is superseded** — the declared architecture ships the server first and a **PWA** as client v1, with
+> SwiftUI at step 5; see
+> `~/broomva/orca/workspaces/broomva/goldeye/docs/specs/2026-08-30-walkie-target-architecture.html`.
+> Three corrections to this file:
+> **(a)** the commit table below is one arc stale — head is `dee74ab`, not `75dbd50`; the tree is clean;
+> **(b)** the open question *"PushToTalk vs plain audio session"* is **decided** — plain audio session plus
+> a hold-to-talk gesture, PTT deferred as an additive later mode, wake-from-terminated knowingly out of v1;
+> **(c)** of the things listed as *"ours to build"*, the **orchestrator plane is deferred** to maloca's
+> escalate branch, and the **ask log is confirmed genuinely absent** from Genesis — `pendingQuestion` is
+> unpersisted projection state, and `queue.jsonl` is a caller *intake* queue with a different schema.
+> The six invariants under *Do not re-decide* all stand, with invariant 1 refined: irreversible verbs are
+> **unexpressible**, and containment-proof is the gate inside the reversible set.
+
 **Arc:** the interface is finished and grounded against Genesis; the Swift client is not started.
 **Date:** 2026-08-29 · **Ticket:** BRO-2362 · **Branch:** merged to `main`
 
@@ -82,6 +96,10 @@ Screens showing any of these are **specifications, not integrations**.
 Full endpoint list and type signatures: the `Wiring · what Genesis actually provides` board.
 
 ## Build order
+
+> **Superseded** — see the amendment note at the top. The current order is: (1) walkie routes on Genesis
+> · (2) PWA · (3) conversational agent · (4) dispatch + hold · (5) SwiftUI + APNs. The client sequence
+> below remains correct *as the client's own internal order* once step 2 or step 5 begins.
 
 Milestone 1 in the architecture doc (host agent, one workspace, no voice) does not need the
 client at all. The client can start in parallel:
@@ -166,9 +184,11 @@ Load-bearing and argued to a conclusion. Changing one is a product decision.
   12/14/16/18/22/24/28. Flagged repeatedly and deliberately not swept — it moves every screen.
 - **Pair-failed** has no screen. Thread and receipts **empty states** have none.
 - **No account concept.** Possibly correct (the tailnet is the identity) but undecided.
-- **PushToTalk vs plain audio session.** Decided as plain-audio + hold-to-talk to preserve
-  full duplex, but the entitlement and push-type specifics were never verified against
-  current Apple docs.
+- ~~**PushToTalk vs plain audio session.**~~ **Closed 2026-08-30** — plain audio session with a
+  hold-to-talk gesture, preserving full duplex and barge-in. Apple's PushToTalk framework is *not*
+  adopted in v1 (it would be a one-way door: half-duplex plus its own system UI), so wake-from-terminated
+  is knowingly out of v1 and PTT stays available as an additive later mode. The entitlement question is
+  deferred with it; the only direct answer found remains a DTS forum reply, not documentation.
 
 ## Known limitations of this handoff
 
