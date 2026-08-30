@@ -17,8 +17,9 @@ satisfied:
     note: bun 1.3.14, railway 4.31.0, eas-cli 16.32.0 installed.
   - id: github-remote
     class: authority
-    note: RESOLVED 2026-08-30 by the operator — github.com/broomva/walkie, PUBLIC.
-      Matches genesis and maestro. Pre-publish gate ran the full history: the only
+    note: >-
+      RESOLVED 2026-08-30 by the operator — github.com/broomva/walkie, PUBLIC.
+      Matches genesis and maestro. Pre-publish gate ran the full history; the only
       gitleaks finding is the known .pen fileToken (benign, and the repo's own
       verify-gitleaks-allowlist.sh passes both polarities), no phone numbers, no
       emails, and every xi-api-key occurrence is a header name reading from the
@@ -36,20 +37,6 @@ asks:
     reversible: yes, the client is the last layer to harden
     exhausted: [read, standing-grant, delegate, reroute, loop, default]
 
-  - id: openai-credits
-    class: credential
-    gates: [any validation or use of the OpenAI Realtime path]
-    question: The OpenAI account returns credit_balance_exhausted. Add credit, or
-      commit to ElevenLabs for the voice layer?
-    finding: minting an ephemeral client secret still returns HTTP 200 on an
-      exhausted account; the failure only appears when the session opens. A 200
-      from /v1/realtime/client_secrets is not a usable-session signal.
-    default: proceed on ElevenLabs. It works on this account today, already has a
-      Genesis Voice agent wired to Genesis through a live Tailscale Funnel, and
-      under pause-and-resume its enterprise-gated injection is not needed.
-    reversible: yes — the voice layer sits behind one seam
-    exhausted: [read, standing-grant, delegate, reroute, loop, default]
-
   - id: elevenlabs-key-quota
     class: credential
     gates: [audio probes that synthesize via the vendor; any production TTS volume]
@@ -65,30 +52,69 @@ asks:
     reversible: yes
     exhausted: [read, standing-grant, delegate, reroute, loop, default]
 
-  - id: railway-auth
-    class: credential
-    gates: [deploying the edge]
-    question: railway login needed before any deploy step
-    default: run the edge locally over Tailscale until a deploy is actually wanted
-    reversible: yes
-    exhausted: [read, standing-grant, delegate, reroute, loop, default]
+superseded_verdicts:
+  - id: voice-vendor
+    was: >-
+      OpenAI Realtime — "ElevenLabs gates server-side injection behind an
+      enterprise plan and bills idle connection wall-clock."
+    now: >-
+      ElevenLabs. The reasoning was sound and the premise stopped applying —
+      pause-and-resume makes server-side injection unnecessary, so the enterprise
+      gate is not on the path. The probe then closed the loop 10/10 with real
+      audio (BRO-2364), integrations/ carries only elevenlabs, and the Swift SDK
+      is first-party where every Rust crate is unofficial. OpenAI is additionally
+      credit_balance_exhausted on this account.
+    lesson: >-
+      a verdict written before the probe is a forecast; a measurement beats
+      it regardless of how well argued it was.
 
-deferred_until_research_lands:
-  # RESOLVED by research. Verdict: OpenAI Realtime. ElevenLabs gates server-side
-  # injection behind an enterprise plan and bills idle connection wall-clock,
-  # which is exactly wrong for a channel whose value is being available. Both
-  # can otherwise do the job.
-  # RESOLVED by research — moved out of deferred, kept here for the audit trail.
-  # Verdict: PWA for the v1 interaction-loop prototype, scoped honestly as
-  # notify-and-open; Expo dev-client + Apple PushToTalk for the actual product.
-  # A PWA cannot play a readback or capture mic while backgrounded, cannot wake
-  # from terminated, and Safari REVOKES the push permission if a push is not
-  # user-visible. That is not a maturity gap; there is no web analogue to
-  # UIBackgroundModes.
+  - id: native-client-path
+    was: >-
+      Expo dev-client + Apple PushToTalk for the actual product.
+    now: >-
+      SwiftUI, and PushToTalk is the GESTURE not the framework. No Expo
+      PushToTalk module exists, so that path writes the Swift anyway and pays a
+      bridge on top. The framework itself is not adopted in v1: it enforces
+      half-duplex and its own system UI, which kills the barge-in the interface
+      is built around. Plain AVAudioSession + hold-to-talk keeps full duplex;
+      wake-from-terminated is knowingly given up and PTT stays additive later.
+    still_true: >-
+      the PWA limits below — cannot play a readback or capture mic
+      backgrounded, cannot wake from terminated, and Safari revokes push
+      permission if a push is not user-visible. That is why step 5 exists.
+
+  - id: openai-credits
+    was: >-
+      Add OpenAI credit, or commit to ElevenLabs for the voice layer?
+    now: >-
+      RESOLVED with the vendor call — ElevenLabs. The finding that made this an
+      ask still stands and is worth keeping: minting an ephemeral client secret
+      returns HTTP 200 on an exhausted account, so a 200 from
+      /v1/realtime/client_secrets is not a usable-session signal. The failure
+      only appears when the session opens.
+
+  - id: railway-auth
+    was: >-
+      railway login needed before any deploy step.
+    now: >-
+      MOOT for this service. The declared architecture keeps Genesis
+      host-resident, so there is no Railway deploy on walkie's path. Railway
+      remains the house default for ordinary services; this one is a named
+      exception because the workspace read paths are filesystem-bound and
+      subscription OAuth requires owned compute.
+
   - id: router-host
-    class: decision
-    note: VPS (srv1692698) vs local Mac vs cloud. Depends on what reaches a
-      Claude Code session in a supported way.
+    was: >-
+      VPS (srv1692698) vs local Mac vs cloud — deferred.
+    now: >-
+      RESOLVED — the owned host, running LocalHost, API and sessions co-resident.
+      Not a preference. workspace-fs.ts, workspace-browse.ts and workspace-git.ts
+      each read through Node fs because the API and the workspaces share a
+      filesystem ("the VPS deploy is LocalHost-only"), and non-owned compute
+      cannot carry subscription OAuth. Genesis already ships the seam —
+      ExecutionHost with LocalHost / VpsHost / VercelSandboxHost and the
+      credential tier encoded in the type — so this was never walkie's decision
+      to make.
 
 decisions:
   - id: no-messaging-socket
