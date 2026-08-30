@@ -115,6 +115,32 @@ over-composite chain, never `rgb * a` a second time), and dot radius is a **frac
 sphere**, never absolute pixels. A 520-point loop hung the canvas renderer; 260 is the
 tested figure and Metal will take more if you measure it.
 
+## Grounded against Genesis
+
+The design was drafted against the architecture document; it has since been checked against
+`apps/genesis` itself. Three corrections landed, and they matter for anyone writing client code:
+
+- **The phase machine is Genesis'.** `RunPhase = "idle" | "running" | "awaiting" | "blocked" | "done"`
+  in `packages/projection/src/reducer.ts`. Running/Needs you/Stuck/Done map to
+  running/**awaiting**/**blocked**/done. Queued and Standing have no Genesis phase — do not
+  invent one.
+- **`awaiting` is entered by `AskUserQuestion`,** and the reducer captures `pendingQuestion`
+  off that tool call. A walkie ask *is* that tool invocation and its options are the tool's
+  options. Build the ask screens against the tool schema, not against a parsed message.
+- **The transport is a WebSocket** at `/ws?thread=<id>`, not SSE. Branches are
+  `genesis/<key>`, not `run/<key>`. `noWorktree` is a sticky per-session posture, not a
+  constant. `confined` is the real spawn-hardening flag and is now on the workspace screen.
+
+**What Genesis does not have,** and is therefore ours to build rather than call: the gate and
+the approve verb, the voice-reachability allowlist, standing routines, the append-only
+per-user ask log, containment proof, and the orchestrator plane. `POST /control` gives
+`reset · interrupt · status · archive · unarchive · rename` — Interrupt maps, Send back is a
+`POST /message`, Approve has no counterpart. Any screen showing one of those is a
+specification, not an integration.
+
+The canvas board **`Wiring · what Genesis actually provides`** carries the full endpoint list
+and the type signatures.
+
 ## Do not re-decide
 
 These are load-bearing and were argued to a conclusion. Changing one is a product decision,
