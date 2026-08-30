@@ -15,16 +15,17 @@ satisfied:
   - id: build-tooling
     class: artifact
     note: bun 1.3.14, railway 4.31.0, eas-cli 16.32.0 installed.
-
-asks:
   - id: github-remote
     class: authority
-    gates: [publishing the walkie repo]
-    question: Create github.com/broomva/walkie, private or public?
-    default: hold — the repo works fine local-only; nothing is lost by deferring
-    reversible: yes, a remote can be added at any time
-    exhausted: [read, standing-grant, delegate, reroute, loop, default]
+    note: RESOLVED 2026-08-30 by the operator — github.com/broomva/walkie, PUBLIC.
+      Matches genesis and maestro. Pre-publish gate ran the full history: the only
+      gitleaks finding is the known .pen fileToken (benign, and the repo's own
+      verify-gitleaks-allowlist.sh passes both polarities), no phone numbers, no
+      emails, and every xi-api-key occurrence is a header name reading from the
+      environment. MIT LICENSE added before publishing, since the repo had none and
+      public design work with no license is legally ambiguous.
 
+asks:
   - id: apple-signing
     class: credential
     gates: [native client on device, push notifications, background audio]
