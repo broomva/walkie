@@ -3,7 +3,7 @@
 > **Amended 2026-08-30 (BRO-2382).** The design is intact and still the reference. **The build order below
 > is superseded** — the declared architecture ships the server first and a **PWA** as client v1, with
 > SwiftUI at step 5; see
-> `~/broomva/orca/workspaces/broomva/goldeye/docs/specs/2026-08-30-walkie-target-architecture.html`.
+> `docs/specs/2026-08-30-walkie-target-architecture.html` in `broomva/workspace`.
 > Three corrections to this file:
 > **(a)** the commit table below is one arc stale — head is `dee74ab`, not `75dbd50`; the tree is clean;
 > **(b)** the open question *"PushToTalk vs plain audio session"* is **decided** — plain audio session plus
