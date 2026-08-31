@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+# Mutation sweep over walkie's gates.
+#
+# The tests in test/ assert that the checkers read everything and still have
+# rules. This script is what makes that claim checkable rather than asserted: it
+# breaks the configuration in specific ways and requires the suite to notice.
+#
+# Three guards, each of which caught a real false result while this was written:
+#
+#   clean tree      restoring between mutants would otherwise destroy uncommitted
+#                   work. It refuses rather than reverting over you.
+#   anchor check    a mutation whose pattern no longer matches silently does
+#                   nothing, and the mutant then "survives" for a reason that has
+#                   nothing to do with the tests.
+#   applied check   the file must actually differ after the edit, and be restored
+#                   before the next one. An early version of this sweep reported
+#                   SURVIVED intermittently because the suite started before the
+#                   edit had settled; the bias was toward false survivors, which
+#                   reads as "your tests are weak" and invites weakening a test
+#                   that was fine.
+#
+# Usage: scripts/mutation-sweep.sh          (exits non-zero if any mutant survives)
+set -uo pipefail
+cd "$(dirname "$0")/.." || exit 2
+
+if [ -n "$(git -c core.fsmonitor=false status --porcelain)" ]; then
+  echo "REFUSING: working tree is not clean — this script reverts files between mutants."
+  git -c core.fsmonitor=false status --porcelain
+  exit 2
+fi
+
+# Every file any mutant touches must be listed here. An earlier version backed up
+# only the two config files while also mutating a test file, which would have
+# left that mutation in the tree.
+SUBJECTS=(tsconfig.json biome.json test/control-files.test.ts test/checker-coverage.test.ts)
+
+BAK="$(mktemp -d)"
+for f in "${SUBJECTS[@]}"; do mkdir -p "$BAK/$(dirname "$f")"; cp "$f" "$BAK/$f"; done
+restore() { for f in "${SUBJECTS[@]}"; do cp "$BAK/$f" "$f"; done; }
+trap 'restore; rm -rf "$BAK"' EXIT
+
+survivors=0
+total=0
+
+# mutate <label> <file> <anchor> <replacement> <expected-failing-test-substring>
+mutate() {
+  local label="$1" file="$2" anchor="$3" replacement="$4" want="$5"
+  total=$((total + 1))
+
+  # A file the backup does not cover would be left mutated.
+  local covered=0 f
+  for f in "${SUBJECTS[@]}"; do [ "$f" = "$file" ] && covered=1; done
+  if [ "$covered" -ne 1 ]; then
+    echo "  ERROR     $label — $file is not in SUBJECTS, so it would not be restored"
+    survivors=$((survivors + 1))
+    return
+  fi
+
+  local n
+  n="$(grep -c -- "$anchor" "$file")"
+  if [ "$n" -ne 1 ]; then
+    echo "  ERROR     $label — anchor matched $n times in $file, expected 1"
+    survivors=$((survivors + 1))
+    return
+  fi
+
+  local before after
+  before="$(cat "$file")"
+  python3 - "$file" "$anchor" "$replacement" <<'PY'
+import sys, pathlib
+path, anchor, replacement = sys.argv[1], sys.argv[2], sys.argv[3]
+p = pathlib.Path(path)
+p.write_text(p.read_text().replace(anchor, replacement))
+PY
+  after="$(cat "$file")"
+  if [ "$before" = "$after" ]; then
+    echo "  ERROR     $label — the edit did not change $file"
+    survivors=$((survivors + 1))
+    restore
+    return
+  fi
+
+  local out code
+  out="$(bun test 2>&1)"; code=$?
+  restore
+
+  if [ "$code" -eq 0 ]; then
+    echo "  SURVIVED  $label"
+    survivors=$((survivors + 1))
+  elif printf '%s' "$out" | grep -q -- "$want"; then
+    echo "  killed    $label"
+  else
+    echo "  SURVIVED  $label — suite went red, but not via \"$want\""
+    printf '%s' "$out" | grep '(fail)' | head -3 | sed 's/^/              /'
+    survivors=$((survivors + 1))
+  fi
+}
+
+echo "coverage — the checkers must read everything"
+mutate "tsconfig.include narrowed to test/ only" tsconfig.json \
+  '"include": ["probes/**/*.ts", "test/**/*.ts", "scripts/**/*.ts"]' \
+  '"include": ["test/**/*.ts"]' \
+  "outside the program"
+
+mutate "probes/ hidden from biome via files.ignore" biome.json \
+  '"node_modules/**"]' \
+  '"node_modules/**", "probes/**"]' \
+  "file count equals"
+
+echo "rules — the checkers must still object to things"
+mutate "biome linter disabled" biome.json \
+  '"enabled": true,
+    "rules"' \
+  '"enabled": false,
+    "rules"' \
+  "rejects code violating"
+
+mutate "biome recommended rules off" biome.json \
+  '"recommended": true' \
+  '"recommended": false' \
+  "rejects code violating"
+
+mutate "tsconfig strict off" tsconfig.json \
+  '"strict": true' \
+  '"strict": false' \
+  "rejects code violating the strictness"
+
+echo "control files — the parsers must still reject"
+mutate "Bun.YAML swapped for a lenient stub" test/control-files.test.ts \
+  'return Bun.YAML.parse(source);' \
+  'return { lenient: source };' \
+  "colon-space"
+
+mutate ".jsonl dropped from the extension list" test/control-files.test.ts \
+  '".yaml", ".yml", ".json", ".jsonl"' \
+  '".yaml", ".yml", ".json"' \
+  "accounted for"
+
+echo
+if [ "$survivors" -eq 0 ]; then
+  echo "$total mutants, 0 survivors"
+else
+  echo "$total mutants, $survivors SURVIVED"
+fi
+exit "$((survivors > 0))"
