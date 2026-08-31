@@ -32,7 +32,9 @@ fi
 # Every file any mutant touches must be listed here. An earlier version backed up
 # only the two config files while also mutating a test file, which would have
 # left that mutation in the tree.
-SUBJECTS=(tsconfig.json biome.json .github/workflows/ci.yml test/control-files.test.ts test/checker-coverage.test.ts test/workflow-gates.test.ts)
+SUBJECTS=(tsconfig.json biome.json .github/workflows/ci.yml scripts/assert-gates-succeeded.sh
+          test/control-files.test.ts test/checker-coverage.test.ts test/workflow-gates.test.ts
+          test/gates-predicate.test.ts)
 
 # The baseline must be GREEN. A mutation sweep over a suite that is already red
 # scores every mutant "killed" — for reasons that have nothing to do with the
@@ -65,7 +67,7 @@ total=0
 # the gates can fail would go green having measured nothing. Unlike the arity
 # check this replaced in ci.yml, these two numbers are independent: `total` is
 # incremented by calls that actually ran, EXPECTED_MUTANTS is a separate literal.
-EXPECTED_MUTANTS=8
+EXPECTED_MUTANTS=10
 
 # mutate <label> <file> <anchor> <replacement> <expected-failing-test-substring>
 mutate() {
@@ -170,6 +172,16 @@ mutate "a job added to ci.yml but left out of gates.needs" .github/workflows/ci.
 
   # The single required status check.' \
   "is in \`gates.needs\`"
+
+mutate "the aggregate's result check gutted out of ci.yml" .github/workflows/ci.yml \
+  './scripts/assert-gates-succeeded.sh' \
+  'echo "all gates succeeded"' \
+  "actually evaluates"
+
+mutate "the aggregate predicate weakened to only catch outright failure" scripts/assert-gates-succeeded.sh \
+  'select(.value.result != "success")' \
+  'select(.value.result == "failure")' \
+  "skipped"
 
 echo "control files — the parsers must still reject"
 mutate "Bun.YAML swapped for a lenient stub" test/control-files.test.ts \

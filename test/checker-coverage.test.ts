@@ -36,10 +36,19 @@ function run(cmd: string[], cwd = ROOT): string {
   return Bun.spawnSync(cmd, { cwd }).stdout.toString();
 }
 
-/** Present and not ignored by git, filtered to an extension set. */
+/**
+ * Present and not ignored by git, filtered to an extension set.
+ *
+ * `-z` and a NUL split, not newlines: without it git C-quotes any path with a
+ * non-ASCII or unusual byte — `naïve.ts` comes back as `"na\303\257ve.ts"`,
+ * which no longer ends in `.ts`, so the file drops out of BOTH assertions below
+ * and a genuine type error inside it is invisible to every gate. A fail-open in
+ * a coverage check, and the whole point of a coverage check is that it cannot
+ * fail open.
+ */
 function tracked(extensions: readonly string[]): string[] {
-  return run(["git", "ls-files", "--cached", "--others", "--exclude-standard"])
-    .split("\n")
+  return run(["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"])
+    .split("\0")
     .map((l) => l.trim())
     .filter((l) => l.length > 0 && extensions.some((e) => l.endsWith(e)))
     .sort();
@@ -72,7 +81,26 @@ describe("biome reads every tracked TypeScript file", () => {
   // So widening `files.ignore` to hide a directory turns this red, and an
   // ordinary .d.ts does not, because .d.ts is excluded on both sides for the
   // same declared reason.
-  const subjects = tracked([".ts"]).filter((f) => !f.endsWith(".d.ts"));
+  // biome.json's ignore list, PINNED rather than read. Deriving the skip set
+  // from biome.json would let a widened `files.ignore` skip its own new entries
+  // — the config would silently excuse itself. Pinning it and asserting equality
+  // means widening the config turns this red until someone updates both.
+  //
+  // Round 1 fixed this mismatch at the whole-tree count. Round 2 found the same
+  // root cause relocated to the subject set: the filter mirrored ONE of four
+  // entries, so committing an ordinary fixture into `test/fixtures/` — a
+  // directory biome.json explicitly anticipates — reddened the required check
+  // for no reason. An invariant spelled once per entry is forgotten once per
+  // entry; spell it once.
+  const BIOME_IGNORE = ["**/*.d.ts", "**/fixtures/**", "dist/**", "node_modules/**"];
+
+  test("the pinned ignore list still matches biome.json", () => {
+    const cfg = JSON.parse(run(["cat", `${ROOT}/biome.json`]));
+    expect(cfg.files.ignore).toEqual(BIOME_IGNORE);
+  });
+
+  const globs = BIOME_IGNORE.map((g) => new Bun.Glob(g));
+  const subjects = tracked([".ts"]).filter((f) => !globs.some((g) => g.match(f)));
 
   test("there is something to check", () => {
     expect(subjects.length).toBeGreaterThan(0);

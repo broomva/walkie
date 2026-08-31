@@ -33,7 +33,7 @@ const WORKFLOW = resolve(ROOT, ".github/workflows/ci.yml");
 // Bun.YAML rather than an npm dependency: it is in the runtime this repo already
 // pins, and test/control-files.test.ts proves it can still reject malformed input.
 const workflow = Bun.YAML.parse(readFileSync(WORKFLOW, "utf8")) as {
-  jobs: Record<string, { needs?: string[]; if?: string }>;
+  jobs: Record<string, { needs?: string[]; if?: string; steps?: { run?: string }[] }>;
 };
 
 const AGGREGATE = "gates";
@@ -47,6 +47,16 @@ describe("the required check covers every job", () => {
     const all = Object.keys(workflow.jobs).filter((j) => j !== AGGREGATE);
     const needs = workflow.jobs[AGGREGATE]?.needs ?? [];
     expect([...all].sort()).toEqual([...needs].sort());
+  });
+
+  test(`\`${AGGREGATE}\` actually evaluates its dependencies' results`, () => {
+    // Round 2 replaced the whole step with `echo "all gates succeeded"` and
+    // nothing noticed. The predicate now lives in a script so it can be tested
+    // (test/gates-predicate.test.ts); this asserts the job still CALLS it, so
+    // gutting the step is caught here rather than nowhere.
+    const steps = workflow.jobs[AGGREGATE]?.steps ?? [];
+    const runs = steps.map((st) => st.run ?? "").join("\n");
+    expect(runs).toContain("scripts/assert-gates-succeeded.sh");
   });
 
   test(`\`${AGGREGATE}\` runs even when a dependency fails`, () => {

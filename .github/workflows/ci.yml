@@ -14,8 +14,8 @@
 #
 # The single required status check is `gates`. It is the only context branch
 # protection names, which keeps the required-check list from drifting as gates
-# are added — and it asserts its own arity, so adding a job without wiring it
-# into `needs` turns CI red instead of silently going unguarded.
+# are added. That every job IS wired into `needs:` is asserted by
+# test/workflow-gates.test.ts — not here; see the note on the job itself.
 name: ci
 
 on:
@@ -134,8 +134,10 @@ jobs:
 
   # Everything above asks "does the code pass the gates". This asks the question
   # the gates exist to make answerable: "would the gates notice if it didn't."
-  # It breaks the configuration in seven specific ways and requires the suite to
-  # go red for the right reason each time. Without it, every other job here is a
+  # It breaks the configuration in a fixed set of specific ways and requires the
+  # suite to go red for the right reason each time. The count is asserted by the
+  # sweep itself (EXPECTED_MUTANTS) rather than repeated here, because a number
+  # in prose beside a number in code is one more thing to forget. Without it, every other job here is a
   # claim about code and none is a claim about the gates.
   discriminates:
     name: discriminates
@@ -180,16 +182,14 @@ jobs:
     # required check reads as green. This line is what makes the gate a gate.
     if: ${{ !cancelled() }}
     steps:
+      # The predicate lives in a script so it can be given inputs. Inline, it was
+      # untestable: the round-2 review replaced this whole step with
+      # `echo "all gates succeeded"` and neither the suite nor the mutation
+      # sweep noticed.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: every gate succeeded
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: |
-          set -euo pipefail
           echo "$NEEDS" | jq .
-          bad="$(echo "$NEEDS" | jq -r 'to_entries[] | select(.value.result != "success") | "\(.key)=\(.value.result)"')"
-          if [ -n "$bad" ]; then
-            echo "::error::gates did not succeed:"
-            echo "$bad"
-            exit 1
-          fi
-          echo "all $(echo "$NEEDS" | jq 'length') gates succeeded"
+          ./scripts/assert-gates-succeeded.sh
