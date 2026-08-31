@@ -9,30 +9,35 @@
 // public ingress, no browser and no microphone. Every leg prints PASS/FAIL; a
 // silent no-op cannot read as success.
 
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { connect } from "node:net";
-import { readFileSync, existsSync, readdirSync } from "node:fs";
 
 const DIR = import.meta.dir;
 const KEY = process.env.ELEVENLABS_API_KEY;
 const AGENT = readFileSync(`${DIR}/.agent_id`, "utf8").trim();
 const SESSION = JSON.parse(readFileSync(`${DIR}/.session.json`, "utf8"));
 const EXPECT_CLAUDE = process.env.WALKIE_EXPECT_CLAUDE !== "0";
-if (!KEY) { console.error("no ELEVENLABS_API_KEY"); process.exit(1); }
+if (!KEY) {
+  console.error("no ELEVENLABS_API_KEY");
+  process.exit(1);
+}
 
 const results: { name: string; ok: boolean; detail: string }[] = [];
 const check = (name: string, ok: boolean, detail = "") => {
   results.push({ name, ok, detail });
-  console.log(`  ${ok ? "PASS" : "FAIL"}  ${name}${detail ? "  — " + detail : ""}`);
+  console.log(`  ${ok ? "PASS" : "FAIL"}  ${name}${detail ? `  — ${detail}` : ""}`);
 };
 
 // ---- the queue this whole design turns on -------------------------------
-const QUEUE = [{
-  ticket: "t-8831",
-  workspace: "seaslug",
-  state: "Needs you",
-  question: "Which sessions should walkie attach to?",
-  options: ["Genesis sessions only (safest)", "Attach to sessions you already run"],
-}];
+const QUEUE = [
+  {
+    ticket: "t-8831",
+    workspace: "seaslug",
+    state: "Needs you",
+    question: "Which sessions should walkie attach to?",
+    options: ["Genesis sessions only (safest)", "Attach to sessions you already run"],
+  },
+];
 let drained = false;
 let answered: { ticket: string; answer: string } | null = null;
 
@@ -45,7 +50,11 @@ function peerToken(pid: number): string | null {
   const dir = `${process.env.HOME}/.claude/sessions`;
   const f = readdirSync(dir).find((n) => n.startsWith(`${pid}.`) && n.endsWith(".key"));
   if (!f) return null;
-  try { return JSON.parse(readFileSync(`${dir}/${f}`, "utf8")).peerToken ?? null; } catch { return null; }
+  try {
+    return JSON.parse(readFileSync(`${dir}/${f}`, "utf8")).peerToken ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function postToSession(text: string): Promise<boolean> {
@@ -54,12 +63,18 @@ function postToSession(text: string): Promise<boolean> {
     const sock = connect(SESSION.messagingSocketPath);
     let ok = false;
     sock.on("connect", () => {
-      if (tok) sock.write(JSON.stringify({ type: "auth", token: tok }) + "\n");
-      sock.write(JSON.stringify({ type: "user", message: { role: "user", content: text } }) + "\n");
+      if (tok) sock.write(`${JSON.stringify({ type: "auth", token: tok })}\n`);
+      sock.write(`${JSON.stringify({ type: "user", message: { role: "user", content: text } })}\n`);
       ok = true;
-      setTimeout(() => { sock.end(); resolve(ok); }, 400);
+      setTimeout(() => {
+        sock.end();
+        resolve(ok);
+      }, 400);
     });
-    sock.on("error", (e) => { console.log(`    [socket] ${e.message}`); resolve(false); });
+    sock.on("error", (e) => {
+      console.log(`    [socket] ${e.message}`);
+      resolve(false);
+    });
   });
 }
 
@@ -77,29 +92,43 @@ const finish = async (code: number) => {
   if (EXPECT_CLAUDE) {
     // Give the session a moment to wake and act, then look for its artifact.
     // Resolve from the session registry's own cwd, never from a symlink this
-  // script maintains. A missing file cannot distinguish "the session did not
-  // act" from "I looked in the wrong place" — and the second one happened.
-  const target = `${SESSION.cwd}/answered.txt`;
-    let found = false, body = "";
+    // script maintains. A missing file cannot distinguish "the session did not
+    // act" from "I looked in the wrong place" — and the second one happened.
+    const target = `${SESSION.cwd}/answered.txt`;
+    let found = false;
+    let body = "";
     for (let i = 0; i < 40; i++) {
-      if (existsSync(target)) { body = readFileSync(target, "utf8").trim(); found = body.length > 0; if (found) break; }
+      if (existsSync(target)) {
+        body = readFileSync(target, "utf8").trim();
+        found = body.length > 0;
+        if (found) break;
+      }
       await new Promise((r) => setTimeout(r, 1000));
     }
-    check("the Claude Code session woke and wrote the artifact", found,
-      found ? body.slice(0, 90).replace(/\n/g, " ") : "no answered.txt after 40s");
+    check(
+      "the Claude Code session woke and wrote the artifact",
+      found,
+      found ? body.slice(0, 90).replace(/\n/g, " ") : "no answered.txt after 40s",
+    );
   }
-  console.log("\n--- event types seen ---\n  " + [...new Set(seen)].join("\n  "));
+  console.log(`\n--- event types seen ---\n  ${[...new Set(seen)].join("\n  ")}`);
   const bad = results.filter((r) => !r.ok);
   console.log(`\n${results.length - bad.length}/${results.length} checks passed`);
-  try { ws.close(); } catch {}
+  try {
+    ws.close();
+  } catch {}
   process.exit(bad.length ? 1 : code);
 };
 
-const timer = setTimeout(() => { check("completed within 120s", false, "timed out"); finish(1); }, 120_000);
+const timer = setTimeout(() => {
+  check("completed within 120s", false, "timed out");
+  finish(1);
+}, 120_000);
 
 ws.addEventListener("error", (e: any) => {
   check("conversation socket connects", false, String(e?.message ?? e));
-  clearTimeout(timer); finish(1);
+  clearTimeout(timer);
+  finish(1);
 });
 
 ws.addEventListener("open", () => {
@@ -115,8 +144,11 @@ ws.addEventListener("message", async (m: any) => {
   seen.push(ev.type);
 
   if (ev.type === "conversation_initiation_metadata") {
-    check("conversation started", true,
-      String(ev.conversation_initiation_metadata_event?.conversation_id ?? "").slice(0, 20));
+    check(
+      "conversation started",
+      true,
+      String(ev.conversation_initiation_metadata_event?.conversation_id ?? "").slice(0, 20),
+    );
     // Resume trigger: the client knows this is a resume and primes the turn.
     send({ type: "user_message", text: "what needs me?" });
   }
@@ -125,37 +157,53 @@ ws.addEventListener("message", async (m: any) => {
     const c = ev.client_tool_call;
     if (!firstToolCalled) {
       firstToolCalled = c.tool_name;
-      check("the agent's FIRST tool call drains the queue",
-        c.tool_name === "get_pending", `first tool = ${c.tool_name}`);
+      check(
+        "the agent's FIRST tool call drains the queue",
+        c.tool_name === "get_pending",
+        `first tool = ${c.tool_name}`,
+      );
     }
     if (c.tool_name === "get_pending") {
       drained = true;
-      send({ type: "client_tool_result", tool_call_id: c.tool_call_id,
-             result: JSON.stringify({ pending: QUEUE }), is_error: false });
+      send({
+        type: "client_tool_result",
+        tool_call_id: c.tool_call_id,
+        result: JSON.stringify({ pending: QUEUE }),
+        is_error: false,
+      });
     }
     if (c.tool_name === "answer_ask") {
       sawAnswerTool = true;
       const p = c.parameters ?? {};
       answered = { ticket: String(p.ticket ?? ""), answer: String(p.answer ?? "") };
-      check("agent called answer_ask carrying the ticket", answered.ticket === "t-8831",
-        `ticket=${answered.ticket}`);
-      check("the answer survived the round trip", /genesis/i.test(answered.answer),
-        answered.answer.slice(0, 70));
+      check(
+        "agent called answer_ask carrying the ticket",
+        answered.ticket === "t-8831",
+        `ticket=${answered.ticket}`,
+      );
+      check(
+        "the answer survived the round trip",
+        /genesis/i.test(answered.answer),
+        answered.answer.slice(0, 70),
+      );
       const posted = EXPECT_CLAUDE
         ? await postToSession(
-            `walkie e2e: ticket ${answered.ticket} was answered "${answered.answer}". ` +
-            `Write a file named answered.txt in the current directory whose contents are exactly: ` +
-            `${answered.ticket} ${answered.answer}`)
+            `walkie e2e: ticket ${answered.ticket} was answered "${answered.answer}". Write a file named answered.txt in the current directory whose contents are exactly: ${answered.ticket} ${answered.answer}`,
+          )
         : false;
       if (EXPECT_CLAUDE) check("answer posted into the Claude Code session socket", posted);
-      send({ type: "client_tool_result", tool_call_id: c.tool_call_id,
-             result: JSON.stringify({ delivered: posted }), is_error: false });
+      send({
+        type: "client_tool_result",
+        tool_call_id: c.tool_call_id,
+        result: JSON.stringify({ delivered: posted }),
+        is_error: false,
+      });
     }
   }
 
   if (ev.type === "agent_response") {
     const t = ev.agent_response_event?.agent_response ?? "";
-    agentSaid += t + " ";
+    agentSaid += `${t} `;
     if (drained && !sawAnswerTool && /seaslug|attach|walkie/i.test(t)) {
       check("agent spoke the queued ask", true, t.slice(0, 90).replace(/\n/g, " "));
       send({ type: "user_message", text: "Go with Genesis sessions only, the safest one." });
