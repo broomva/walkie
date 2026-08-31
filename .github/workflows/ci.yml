@@ -148,6 +148,17 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: ./scripts/mutation-sweep.sh
 
+  # PROBE (BRO-2385 refutation attempt): a sixth gate added to jobs: and NOT
+  # wired into gates' needs:. The comment at the top of this file claims the
+  # arity assertion turns CI red for exactly this. Does it?
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: this gate fails
+        run: exit 1
+
   # The single required status check. Fails closed on anything that is not an
   # outright success — `skipped` included, because GitHub counts a skipped
   # required check as PASSING, which would make an `if:` on any gate above a
