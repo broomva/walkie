@@ -59,6 +59,14 @@ trap 'restore; rm -rf "$BAK"' EXIT
 survivors=0
 total=0
 
+# The sweep must assert its own arity, for the same reason the workflow's
+# aggregate has to. Delete every `mutate` call and an unguarded sweep prints
+# "0 mutants, 0 survivors" and exits 0 — the job whose entire purpose is proving
+# the gates can fail would go green having measured nothing. Unlike the arity
+# check this replaced in ci.yml, these two numbers are independent: `total` is
+# incremented by calls that actually ran, EXPECTED_MUTANTS is a separate literal.
+EXPECTED_MUTANTS=7
+
 # mutate <label> <file> <anchor> <replacement> <expected-failing-test-substring>
 mutate() {
   local label="$1" file="$2" anchor="$3" replacement="$4" want="$5"
@@ -109,7 +117,11 @@ PY
   if [ "$code" -eq 0 ]; then
     echo "  SURVIVED  $label"
     survivors=$((survivors + 1))
-  elif printf '%s' "$out" | grep -q -- "$want"; then
+  # Matched against the FAILING lines only. Grepping the whole suite output lets
+  # a mutant be scored killed on the strength of a test that PASSED — bun prints
+  # source context around a failure, so an unrelated red run can carry the name
+  # of the very assertion this mutant was supposed to break.
+  elif printf '%s' "$out" | grep '(fail)' | grep -q -- "$want"; then
     echo "  killed    $label"
   else
     echo "  SURVIVED  $label — suite went red, but not via \"$want\""
@@ -159,6 +171,21 @@ mutate ".jsonl dropped from the extension list" test/control-files.test.ts \
   "accounted for"
 
 echo
+if [ "$total" -ne "$EXPECTED_MUTANTS" ]; then
+  echo "$total mutants ran, expected $EXPECTED_MUTANTS — a mutant was added or removed"
+  exit 1
+fi
+
+# The tree must be exactly as it was found. `restore` is never checked for
+# success, so a $BAK that went unwritable mid-run would silently leave a mutation
+# in place and every later verdict would be about the wrong file.
+restore
+if [ -n "$(git -c core.fsmonitor=false status --porcelain)" ]; then
+  echo "the tree was not restored cleanly:"
+  git -c core.fsmonitor=false status --porcelain
+  exit 1
+fi
+
 if [ "$survivors" -eq 0 ]; then
   echo "$total mutants, 0 survivors"
 else

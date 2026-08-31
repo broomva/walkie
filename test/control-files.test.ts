@@ -25,10 +25,10 @@ import { describe, expect, test } from "bun:test";
  * Extensions cover `.jsonl` deliberately: `.control/leverage-metrics.jsonl` is a
  * control file, and a `*.json` glob does not match it.
  */
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { readFileSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
 
-const ROOT = join(import.meta.dir, "..");
+const ROOT = resolve(import.meta.dir, "..");
 const CONTROL = join(ROOT, ".control");
 const EXTENSIONS = [".yaml", ".yml", ".json", ".jsonl"];
 
@@ -60,9 +60,19 @@ function parserFor(path: string): (source: string) => unknown {
   return parseYaml;
 }
 
-const everything = readdirSync(CONTROL, { recursive: true, encoding: "utf8" })
-  .map((entry) => join(CONTROL, entry))
-  .filter((path) => statSync(path).isFile())
+// Enumerated through git, not the filesystem. A recursive readdir picks up
+// anything the OS drops in — macOS writes .DS_Store into directories unprompted,
+// and the repo root already carries one — which reddens the suite over a file
+// `git status` reports as clean, i.e. a failure with no diff to point at.
+const everything = Bun.spawnSync(
+  ["git", "ls-files", "--cached", "--others", "--exclude-standard", "--", ".control"],
+  { cwd: ROOT },
+)
+  .stdout.toString()
+  .split("\n")
+  .map((l) => l.trim())
+  .filter((l) => l.length > 0)
+  .map((rel) => join(ROOT, rel))
   .sort();
 
 const controlFiles = everything.filter((path) => EXTENSIONS.some((ext) => path.endsWith(ext)));

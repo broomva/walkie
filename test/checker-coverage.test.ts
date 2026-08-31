@@ -4,35 +4,39 @@ import { describe, expect, test } from "bun:test";
  *
  * A gate is not weakened by being made to fail — it is weakened by being made to
  * look at less. `tsconfig.include` narrowed, or `biome.files.ignore` widened, and
- * the pipeline stays green over a shrinking program. Nothing else in this repo
- * would notice: `tsc` exits 0 on a one-file program just as happily as on four.
+ * the pipeline stays green over a shrinking program. Nothing else here would
+ * notice: tsc exits 0 on a one-file program as happily as on four.
  *
- * I know this shape catches something real because the first guard I wrote here
- * did not. It asserted `filesInProgram > 0`, which passes when `include` is
- * narrowed from three directories to one — precisely the drift worth catching —
- * and is redundant when the program is fully empty, because tsc already errors
- * TS18003 on its own.
+ * Two earlier versions of this file are worth knowing about, because both looked
+ * fine and neither worked.
  *
- * So both assertions below compare against the tracked file set rather than
- * against a threshold: what git says the repo contains has to equal what the
- * checker says it read.
+ *   The first asserted `filesInProgram > 0`. That passes when `include` is
+ *   narrowed from three directories to one — the drift actually worth catching —
+ *   and is redundant when the program is empty, since tsc errors TS18003 on its
+ *   own.
+ *
+ *   The second compared biome's whole-tree file COUNT against git's. Those two
+ *   numbers are computed under different ignore models: git honours .gitignore,
+ *   biome honours .gitignore PLUS its own `files.ignore`. Adding an ordinary
+ *   `env.d.ts` reddened the suite for no reason, and a count can match by
+ *   coincidence while the sets differ. Brittle AND bypassable is worse than
+ *   absent: it teaches people to edit the assertion.
+ *
+ * What is left compares sets, per file, against what the checker itself reports.
  */
-import { writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 
-const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
+// NOT `new URL("..", import.meta.url).pathname` — that percent-encodes, so every
+// spawn below dies with ENOENT on a checkout path containing a space. Resolved
+// rather than left as `<dir>/..`, or the prefix match on tsc's normalised
+// absolute paths never hits.
+const ROOT = resolve(import.meta.dir, "..");
 
-function run(cmd: string[]): string {
-  const p = Bun.spawnSync(cmd, { cwd: ROOT });
-  return p.stdout.toString();
+function run(cmd: string[], cwd = ROOT): string {
+  return Bun.spawnSync(cmd, { cwd }).stdout.toString();
 }
 
-/**
- * Files git would show as present-and-not-ignored, filtered to an extension set.
- * `--cached --others --exclude-standard` is deliberate: biome runs with
- * `vcs.useIgnoreFile`, so it reads untracked files too, and comparing its count
- * against tracked-only would drift by exactly the number of new files in the
- * tree. In CI the two sets coincide, because a checkout has no untracked files.
- */
+/** Present and not ignored by git, filtered to an extension set. */
 function tracked(extensions: readonly string[]): string[] {
   return run(["git", "ls-files", "--cached", "--others", "--exclude-standard"])
     .split("\n")
@@ -47,7 +51,7 @@ describe("tsc reads every tracked TypeScript file", () => {
     expect(expected.length).toBeGreaterThan(0); // the walk itself must find something
 
     const inProgram = new Set(
-      run(["bunx", "tsc", "--noEmit", "--listFiles"])
+      run([`${ROOT}/node_modules/.bin/tsc`, "--noEmit", "--listFiles"])
         .split("\n")
         .map((l) => l.trim())
         .filter((l) => l.startsWith(`${ROOT}/`))
@@ -55,66 +59,64 @@ describe("tsc reads every tracked TypeScript file", () => {
         .filter((l) => !l.startsWith("node_modules/")),
     );
 
-    const missing = expected.filter((f) => !inProgram.has(f));
-    expect(missing).toEqual([]);
+    expect(expected.filter((f) => !inProgram.has(f))).toEqual([]);
   });
 });
 
-describe("biome reads every tracked file it understands", () => {
-  // Biome reports a count, not a list, so this compares counts. Narrowing
-  // `files.ignore` to hide a directory moves the count and fails here.
-  test("biome's file count equals the tracked file count", () => {
-    // `bun.lock` is JSONC and biome does not claim it; everything else with one
-    // of these extensions is fair game.
-    const expected = tracked([
-      ".ts",
-      ".tsx",
-      ".js",
-      ".jsx",
-      ".mjs",
-      ".cjs",
-      ".json",
-      ".jsonc",
-    ]).filter((f) => f !== "bun.lock");
-    expect(expected.length).toBeGreaterThan(0);
+describe("biome reads every tracked TypeScript file", () => {
+  // Per file, against biome's own accounting. Naming a file biome is configured
+  // to ignore makes it report zero files seen; naming one it will check makes it
+  // report one. Measured: `biome ci --reporter=json <ignored>` gives
+  // `unchanged: 0`, `<checked>` gives `unchanged: 1`.
+  //
+  // So widening `files.ignore` to hide a directory turns this red, and an
+  // ordinary .d.ts does not, because .d.ts is excluded on both sides for the
+  // same declared reason.
+  const subjects = tracked([".ts"]).filter((f) => !f.endsWith(".d.ts"));
 
-    const out = run(["bunx", "biome", "ci", "--reporter=json", "."]);
+  test("there is something to check", () => {
+    expect(subjects.length).toBeGreaterThan(0);
+  });
+
+  test.each(subjects)("biome sees %s", (file) => {
+    const out = run([`${ROOT}/node_modules/.bin/biome`, "ci", "--reporter=json", file]);
     const json = JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1));
-    const seen: number = json.summary.changed + json.summary.unchanged + json.summary.skipped;
-
-    expect({ seen, expected: expected.length, files: expected }).toMatchObject({
-      seen: expected.length,
-    });
+    const seen = json.summary.changed + json.summary.unchanged + json.summary.skipped;
+    expect(seen).toBeGreaterThan(0);
   });
 });
 
 /**
  * Coverage says which files a checker reads. It says nothing about whether the
- * checker still has rules. `linter.enabled: false` in biome.json leaves every
- * file count identical and every diagnostic gone — a mutation the coverage
- * assertions above genuinely survive, which is how this block came to exist.
+ * checker still has rules. `linter.enabled: false` leaves every file count
+ * identical and every diagnostic gone — a mutation the coverage assertions above
+ * genuinely survive, which is how this block came to exist.
  *
  * Asserting that biome.json says `enabled: true` would not fix it: reading our
  * own config back is the config agreeing with itself. So the checkers are RUN,
  * over the repo's real config, against code that must be rejected and code that
  * must be accepted.
  *
- * The negative control is not decoration. The first version of this ran biome
- * through `--stdin-file-path`, which exits 1 unconditionally in stdin mode
- * ("The contents aren't fixed") — so the rejection test passed while carrying
- * no signal at all. Only the acceptance test failing exposed it. A planted
- * defect proves the instrument runs; it takes both polarities to show the
- * instrument can tell the two cases apart.
+ * The negative control is not decoration. The first version ran biome through
+ * `--stdin-file-path`, which exits 1 unconditionally in stdin mode ("The
+ * contents aren't fixed") — so the rejection test passed carrying no signal at
+ * all, and only the acceptance test failing exposed it. A planted defect proves
+ * the instrument runs; it takes both polarities to show it can tell the cases
+ * apart.
  */
 describe("the checkers still have rules", () => {
+  function write(path: string, source: string): void {
+    Bun.spawnSync(["sh", "-c", `cat > "${path}"`], { stdin: new TextEncoder().encode(source) });
+  }
+
   /** A scratch git repo carrying THIS repo's biome.json, so the real rule set applies. */
   function biomeExit(source: string): number {
     const dir = Bun.spawnSync(["mktemp", "-d"]).stdout.toString().trim();
     try {
-      // biome runs with vcs.useIgnoreFile, and hard-fails outside a git repo.
+      // biome runs with vcs.useIgnoreFile and hard-fails outside a git repo.
       Bun.spawnSync(["git", "init", "-q", dir]);
       Bun.spawnSync(["cp", `${ROOT}/biome.json`, `${dir}/biome.json`]);
-      writeFileSync(`${dir}/subject.ts`, source);
+      write(`${dir}/subject.ts`, source);
       // NOT `bunx biome`: outside a directory whose node_modules holds
       // @biomejs/biome, bunx resolves npm's unrelated `biome` package (0.3.3),
       // which exits 0 on everything. Measured, not guessed.
@@ -135,28 +137,25 @@ describe("the checkers still have rules", () => {
   });
 
   /**
-   * Written outside the repo so it cannot perturb the coverage counts above, but
+   * Written outside the repo so it cannot perturb the sets above, but
    * `extends`-ing the repo's own tsconfig so the assertion is about THIS repo's
-   * strictness and not about tsc's.
-   *
-   * The first version passed `--strict` on the command line. That version
-   * survived flipping `"strict": false` in tsconfig.json — it proved tsc obeys
-   * `--strict`, which was never in question, and said nothing about what the
-   * repo asks for. `typeRoots` is pinned back at the repo because a scratch
-   * directory has no node_modules to resolve `types: ["bun"]` from.
+   * strictness and not about tsc's. The first version passed `--strict` on the
+   * command line and survived flipping `"strict": false` in tsconfig.json — it
+   * proved tsc obeys `--strict`, which was never in question.
    */
   function tscExit(source: string): number {
     const dir = Bun.spawnSync(["mktemp", "-d"]).stdout.toString().trim();
     try {
-      writeFileSync(
+      write(
         `${dir}/tsconfig.json`,
         JSON.stringify({
           extends: `${ROOT}/tsconfig.json`,
+          // A scratch dir has no node_modules to resolve `types: ["bun"]` from.
           compilerOptions: { typeRoots: [`${ROOT}/node_modules/@types`] },
           include: ["subject.ts"],
         }),
       );
-      writeFileSync(`${dir}/subject.ts`, source);
+      write(`${dir}/subject.ts`, source);
       return Bun.spawnSync(
         [`${ROOT}/node_modules/.bin/tsc`, "--noEmit", "-p", `${dir}/tsconfig.json`],
         { cwd: ROOT },
