@@ -1,0 +1,195 @@
+# walkie CI.
+#
+# Genesis's pipeline is a single sequential job, and BRO-2385 says to mirror it.
+# It is not mirrored, deliberately, and the reason is the ticket's own premise:
+# steps in a job carry an implicit success() guard, so a failure at `biome ci`
+# leaves typecheck, test and the secret scan UNMEASURED. For a repo whose whole
+# purpose right now is "the gate must be able to fail", a shape where one red
+# gate hides the other three is the wrong shape. Every gate here runs, and
+# reports, independently.
+#
+# `continue-on-error` was the obvious alternative and it is disqualified: at step
+# level it makes the JOB pass, inverting the polarity of the thing we are trying
+# to build.
+#
+# The single required status check is `gates`. It is the only context branch
+# protection names, which keeps the required-check list from drifting as gates
+# are added. That every job IS wired into `needs:` is asserted by
+# test/workflow-gates.test.ts — not here; see the note on the job itself.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Nothing here writes to the repository. Unspecified scopes default to none.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+      # `--frozen-lockfile` installs from package.json and PASSES when no
+      # lockfile exists at all. Without this line the install step is vacuous.
+      - name: bun.lock must be committed
+        run: test -f bun.lock
+      - run: bun install --frozen-lockfile
+      # `bunx biome` resolves the LOCAL @biomejs/biome once install has run. Run
+      # it anywhere without that, and bunx fetches npm's unrelated `biome`
+      # package — version 0.3.3, which exits 0 on everything. Measured, not
+      # supposed. A silently-substituted linter is a green lint gate that lints
+      # nothing, so the identity is asserted before it is trusted.
+      - name: the resolved biome is the pinned one
+        run: |
+          set -euo pipefail
+          v="$(bunx biome --version | sed 's/^Version: *//')"
+          echo "biome: $v"
+          case "$v" in
+            1.9.*) ;;
+            *) echo "::error::expected biome 1.9.x from the lockfile, resolved $v"; exit 1 ;;
+          esac
+      - run: bunx biome ci .
+
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+      - name: bun.lock must be committed
+        run: test -f bun.lock
+      - run: bun install --frozen-lockfile
+      # Whether tsc is looking at ALL the tracked TypeScript is asserted by
+      # test/checker-coverage.test.ts, in the `test` job. A count-based guard
+      # here would not do it: `filesInProgram > 0` passes when `include` is
+      # narrowed from three directories to one, which is the drift worth
+      # catching, and is redundant when the program is empty because tsc already
+      # errors TS18003 on its own.
+      - run: bun run typecheck
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+      - name: bun.lock must be committed
+        run: test -f bun.lock
+      - run: bun install --frozen-lockfile
+      # Covers the .control/*.{yaml,yml,json,jsonl} parse gate. `bun test` exits
+      # 1 when it finds zero test files, so an emptied suite cannot read green.
+      - run: bun test
+
+  secrets:
+    name: secrets
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Pinned release + checksum rather than gitleaks-action: that action is
+      # proprietary (EULA since v2.0.0), and its v2 stops working on 2026-09-16
+      # when Node 20 leaves the hosted runners. The binary has no GitHub artifact
+      # attestation, so checksums.txt is the only verification surface there is —
+      # this constant was verified by downloading the asset, not by recall.
+      - name: install gitleaks 8.30.1
+        run: |
+          set -euo pipefail
+          v=8.30.1
+          sha=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+          # --retry, because the only required check should not go red over a
+          # transient 429 on a docs-only PR.
+          curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${v}/gitleaks_${v}_linux_x64.tar.gz" -o gl.tgz
+          echo "${sha}  gl.tgz" | sha256sum -c -
+          tar -xzf gl.tgz gitleaks
+          sudo install -m755 gitleaks /usr/local/bin/gitleaks
+          rm -f gl.tgz gitleaks
+          gitleaks version
+      # This script already existed and nothing ran it. It is the repo's most
+      # anchored check: a third-party detector, asserted in BOTH polarities —
+      # the committed .pen must be clean, AND a key planted into that same
+      # exempted file must still fire. A one-sided check passes just as happily
+      # against an exemption that swallows the whole file, which is not
+      # hypothetical: two earlier configs did exactly that.
+      - name: the gitleaks allowlist covers the fileToken and nothing else
+        run: ./scripts/verify-gitleaks-allowlist.sh
+
+  # Everything above asks "does the code pass the gates". This asks the question
+  # the gates exist to make answerable: "would the gates notice if it didn't."
+  # It breaks the configuration in a fixed set of specific ways and requires the
+  # suite to go red for the right reason each time. The count is asserted by the
+  # sweep itself (EXPECTED_MUTANTS) rather than repeated here, because a number
+  # in prose beside a number in code is one more thing to forget. Without it, every other job here is a
+  # claim about code and none is a claim about the gates.
+  discriminates:
+    name: discriminates
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+      - name: bun.lock must be committed
+        run: test -f bun.lock
+      - run: bun install --frozen-lockfile
+      - run: ./scripts/mutation-sweep.sh
+
+  # The single required status check. Fails closed on anything that is not an
+  # outright success — `skipped` included, because GitHub counts a skipped
+  # required check as PASSING, which would make an `if:` on any gate above a
+  # silent way to satisfy branch protection.
+  #
+  # It does NOT verify that every job above is wired into `needs:`. It cannot:
+  # `toJSON(needs)` contains exactly the keys in `needs:`, so any count taken
+  # from it is the length of that list compared against itself. An earlier
+  # version had such a check and documented it as catching exactly the drift it
+  # was structurally incapable of seeing. That assertion now lives in
+  # test/workflow-gates.test.ts, which compares the `jobs:` keys against
+  # `gates.needs` — two lists neither of which is derived from the other.
+  #
+  # Residual, stated rather than papered over: if a human cancels the run,
+  # `!cancelled()` is false, this job does not run, and a skipped required check
+  # reads as green. `always()` would cover it but GitHub's docs advise against
+  # it (a job that cannot be cancelled hangs until timeout). Cancelling is
+  # operator-initiated and `enforce_admins` is false anyway, so the owner can
+  # already push past this gate; the honest note is that this is a gate against
+  # mistakes, not against a determined bypass.
+  gates:
+    name: gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [lint, typecheck, test, secrets, discriminates]
+    # Without this the job is SKIPPED when a dependency fails — and a skipped
+    # required check reads as green. This line is what makes the gate a gate.
+    if: ${{ !cancelled() }}
+    steps:
+      # The predicate lives in a script so it can be given inputs. Inline, it was
+      # untestable: the round-2 review replaced this whole step with
+      # `echo "all gates succeeded"` and neither the suite nor the mutation
+      # sweep noticed.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: every gate succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq .
+          ./scripts/assert-gates-succeeded.sh

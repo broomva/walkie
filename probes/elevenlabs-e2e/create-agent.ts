@@ -3,7 +3,10 @@
 // conversation — which means this whole test needs no public ingress.
 
 const KEY = process.env.ELEVENLABS_API_KEY;
-if (!KEY) { console.error("no ELEVENLABS_API_KEY"); process.exit(1); }
+if (!KEY) {
+  console.error("no ELEVENLABS_API_KEY");
+  process.exit(1);
+}
 
 const body = {
   name: `walkie e2e probe ${process.env.WALKIE_AUDIO === "1" ? "audio" : "text"} (delete me)`,
@@ -15,12 +18,18 @@ const body = {
       text_only: process.env.WALKIE_AUDIO !== "1",
       max_duration_seconds: 300,
       client_events: [
-        "conversation_initiation_metadata", "agent_response", "user_transcript",
-        "client_tool_call", "agent_tool_response", "audio", "interruption", "ping",
+        "conversation_initiation_metadata",
+        "agent_response",
+        "user_transcript",
+        "client_tool_call",
+        "agent_tool_response",
+        "audio",
+        "interruption",
+        "ping",
       ],
     },
     agent: {
-      first_message: "",            // agent must not speak before draining the queue
+      first_message: "", // agent must not speak before draining the queue
       language: "en",
       prompt: {
         llm: "gemini-2.5-flash",
@@ -73,6 +82,9 @@ const res = await fetch("https://api.elevenlabs.io/v1/convai/agents/create", {
   body: JSON.stringify(body),
 });
 const text = await res.text();
-if (!res.ok) { console.error(`HTTP ${res.status}\n${text.slice(0, 900)}`); process.exit(1); }
+if (!res.ok) {
+  console.error(`HTTP ${res.status}\n${text.slice(0, 900)}`);
+  process.exit(1);
+}
 const j = JSON.parse(text);
 console.log(j.agent_id);

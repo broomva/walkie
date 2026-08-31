@@ -35,7 +35,13 @@ command -v gitleaks >/dev/null    || { echo "gitleaks not installed"; exit 1; }
 # --source produces an absolute fingerprint that can never match a repo-relative
 # line in .gitleaksignore. Scanning from inside the copy is what makes this
 # control comparable to the pre-commit hook.
-scan() { ( cd "$1" && gitleaks detect --no-git --redact --source . >/dev/null 2>&1 ); }
+# `--report-format json` because plain output says only "leaks found: 1" and names
+# nothing. Which file leaked is the whole diagnostic; the secret itself stays
+# redacted.
+scan() {
+  ( cd "$1" && gitleaks detect --no-git --redact --source . \
+      --report-format json --report-path "$2" >/dev/null 2>&1 )
+}
 
 work="$TMP/repo"
 mkdir -p "$work"
@@ -44,10 +50,28 @@ tar -cf - -C "$REPO" --exclude .git . | tar -xf - -C "$work"
 
 fail=0
 
-if scan "$work"; then
+if scan "$work" "$TMP/neg.json"; then
   echo "PASS  negative control: the fileToken alone is not reported"
 else
-  echo "FAIL  negative control: the exemption does not cover the fileToken"
+  echo "FAIL  negative control: the repo as committed is NOT clean"
+  echo
+  echo "      This is stated as a REPO problem, not an allowlist problem, because it"
+  echo "      is usually a real leak. The allowlist is only the cause when every"
+  echo "      finding below is the walkie.pen fileToken; anything else is a"
+  echo "      credential that has been committed, and .gitleaksignore is a red"
+  echo "      herring. Findings, redacted:"
+  echo
+  python3 - "$TMP/neg.json" <<'PY'
+import json, sys
+try:
+    findings = json.load(open(sys.argv[1]))
+except Exception as e:
+    print(f"      (could not read the gitleaks report: {e})")
+    raise SystemExit
+for f in findings[:40]:
+    print(f"      {f.get('File')}:{f.get('StartLine')}  rule={f.get('RuleID')}  secret={f.get('Secret')}")
+print(f"      ({len(findings)} finding(s))")
+PY
   fail=1
 fi
 
@@ -64,7 +88,7 @@ BODY="$(openssl rand -base64 60 | tr -d '\n')"
 printf '\n-----BEGIN RSA PRIVATE KEY-----\n%s\n-----END RSA PRIVATE KEY-----\n' "$BODY" \
   >>"$work/designs/walkie.pen"
 
-if scan "$work"; then
+if scan "$work" "$TMP/pos.json"; then
   echo "FAIL  positive control: a planted key in the exempted .pen was NOT reported"
   echo "      the exemption covers the file, not the fileToken"
   fail=1
