@@ -32,7 +32,7 @@ fi
 # Every file any mutant touches must be listed here. An earlier version backed up
 # only the two config files while also mutating a test file, which would have
 # left that mutation in the tree.
-SUBJECTS=(tsconfig.json biome.json test/control-files.test.ts test/checker-coverage.test.ts)
+SUBJECTS=(tsconfig.json biome.json .github/workflows/ci.yml test/control-files.test.ts test/checker-coverage.test.ts test/workflow-gates.test.ts)
 
 # The baseline must be GREEN. A mutation sweep over a suite that is already red
 # scores every mutant "killed" — for reasons that have nothing to do with the
@@ -65,7 +65,7 @@ total=0
 # the gates can fail would go green having measured nothing. Unlike the arity
 # check this replaced in ci.yml, these two numbers are independent: `total` is
 # incremented by calls that actually ran, EXPECTED_MUTANTS is a separate literal.
-EXPECTED_MUTANTS=7
+EXPECTED_MUTANTS=8
 
 # mutate <label> <file> <anchor> <replacement> <expected-failing-test-substring>
 mutate() {
@@ -139,7 +139,7 @@ mutate "tsconfig.include narrowed to test/ only" tsconfig.json \
 mutate "probes/ hidden from biome via files.ignore" biome.json \
   '"node_modules/**"]' \
   '"node_modules/**", "probes/**"]' \
-  "file count equals"
+  "biome sees"
 
 echo "rules — the checkers must still object to things"
 mutate "biome linter disabled" biome.json \
@@ -158,6 +158,18 @@ mutate "tsconfig strict off" tsconfig.json \
   '"strict": true' \
   '"strict": false' \
   "rejects code violating the strictness"
+
+echo "the required check — it must cover every job"
+mutate "a job added to ci.yml but left out of gates.needs" .github/workflows/ci.yml \
+  '  # The single required status check.' \
+  '  audit:
+    name: audit
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "a gate nobody requires"
+
+  # The single required status check.' \
+  "is in \`gates.needs\`"
 
 echo "control files — the parsers must still reject"
 mutate "Bun.YAML swapped for a lenient stub" test/control-files.test.ts \
