@@ -11,7 +11,7 @@ satisfied:
     note: OPENAI_API_KEY present in the environment. Realtime path unblocked.
   - id: elevenlabs-key
     class: credential
-    note: ELEVENLABS_API_KEY in ~/broomva/.env.local. Already used by talkback.
+    note: ELEVENLABS_API_KEY in the workspace .env.local. Already used by talkback.
   - id: build-tooling
     class: artifact
     note: bun 1.3.14, railway 4.31.0, eas-cli 16.32.0 installed.
@@ -170,6 +170,6 @@ hazards:
       run in Expo Go. No Expo PushToTalk module exists — writing one is the single
       largest unbudgeted item in the native path.
   - id: anthropic-key-forces-api-billing
-    note: ANTHROPIC_API_KEY is present in ~/broomva/.env.local. If it is exported
+    note: ANTHROPIC_API_KEY is present in the workspace .env.local. If it is exported
       into the router host's environment, that session bills API credits instead
       of the subscription. The router host must NOT export it.

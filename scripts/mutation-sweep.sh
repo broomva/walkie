@@ -34,7 +34,7 @@ fi
 # left that mutation in the tree.
 SUBJECTS=(tsconfig.json biome.json .github/workflows/ci.yml scripts/assert-gates-succeeded.sh
           test/control-files.test.ts test/checker-coverage.test.ts test/workflow-gates.test.ts
-          test/gates-predicate.test.ts)
+          test/gates-predicate.test.ts test/no-local-paths.test.ts)
 
 # The baseline must be GREEN. A mutation sweep over a suite that is already red
 # scores every mutant "killed" — for reasons that have nothing to do with the
@@ -67,7 +67,7 @@ total=0
 # the gates can fail would go green having measured nothing. Unlike the arity
 # check this replaced in ci.yml, these two numbers are independent: `total` is
 # incremented by calls that actually ran, EXPECTED_MUTANTS is a separate literal.
-EXPECTED_MUTANTS=10
+EXPECTED_MUTANTS=11
 
 # mutate <label> <file> <anchor> <replacement> <expected-failing-test-substring>
 mutate() {
@@ -182,6 +182,12 @@ mutate "the aggregate predicate weakened to only catch outright failure" scripts
   'select(.value.result != "success")' \
   'select(.value.result == "failure")' \
   "skipped"
+
+echo "public repo — no local filesystem paths"
+mutate "the local-path detector defanged" test/no-local-paths.test.ts \
+  'const LOCAL_PATH = /(?:\/Users\/[a-z]|\/home\/[a-z]|~\/broomva|orca\/workspaces)/i;' \
+  'const LOCAL_PATH = /\bTHIS_PATTERN_MATCHES_NOTHING\b/i;' \
+  "rejects"
 
 echo "control files — the parsers must still reject"
 mutate "Bun.YAML swapped for a lenient stub" test/control-files.test.ts \
