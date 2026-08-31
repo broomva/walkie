@@ -56,10 +56,15 @@ mutate() {
     return
   fi
 
+  # Counted in python, not grep: grep is line-based (so a multi-line anchor can
+  # never match) and treats the anchor as a regex (so `[`, `*` and `]` in a JSON
+  # snippet blow up or match the wrong thing). Both bugs were live here, and
+  # both presented as "anchor matched 0 times" rather than as a wrong verdict —
+  # which is the whole reason this check runs before the mutation.
   local n
-  n="$(grep -c -- "$anchor" "$file")"
+  n="$(python3 -c 'import sys;print(open(sys.argv[1]).read().count(sys.argv[2]))' "$file" "$anchor")"
   if [ "$n" -ne 1 ]; then
-    echo "  ERROR     $label — anchor matched $n times in $file, expected 1"
+    echo "  ERROR     $label — anchor occurs $n times in $file, expected exactly 1"
     survivors=$((survivors + 1))
     return
   fi
