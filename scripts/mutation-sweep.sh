@@ -34,6 +34,23 @@ fi
 # left that mutation in the tree.
 SUBJECTS=(tsconfig.json biome.json test/control-files.test.ts test/checker-coverage.test.ts)
 
+# The baseline must be GREEN. A mutation sweep over a suite that is already red
+# scores every mutant "killed" — for reasons that have nothing to do with the
+# mutation. Without this, "0 survivors" means "the suite was red anyway", and the
+# report is at its most reassuring exactly when it is worthless.
+#
+# This is not hypothetical. The first version of this script had no baseline
+# check, and CI's positive-control run — where five gates were deliberately
+# broken at once — reported "7 mutants, 0 survivors" and went GREEN.
+echo "baseline — the suite must pass before anything is broken"
+if ! baseline="$(bun test 2>&1)"; then
+  echo "  REFUSING: the suite is already failing, so no mutant verdict would mean anything."
+  printf '%s\n' "$baseline" | grep '(fail)' | head -10 | sed 's/^/    /'
+  exit 2
+fi
+echo "  baseline green"
+echo
+
 BAK="$(mktemp -d)"
 for f in "${SUBJECTS[@]}"; do mkdir -p "$BAK/$(dirname "$f")"; cp "$f" "$BAK/$f"; done
 restore() { for f in "${SUBJECTS[@]}"; do cp "$BAK/$f" "$f"; done; }
