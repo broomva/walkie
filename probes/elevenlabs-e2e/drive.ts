@@ -84,6 +84,8 @@ const ws = new WebSocket(url, { headers: { "xi-api-key": KEY } } as any);
 const send = (o: unknown) => ws.send(JSON.stringify(o));
 
 const seen: string[] = [];
+const POSITIVE_CONTROL_LINT = "a" + 1 + "b";
+console.log(POSITIVE_CONTROL_LINT);
 let agentSaid = "";
 let firstToolCalled = "";
 let sawAnswerTool = false;

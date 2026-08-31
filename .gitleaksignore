@@ -9,4 +9,4 @@
 # would ignore has `fileToken` in its matched text.
 #
 # Both polarities are asserted by scripts/verify-gitleaks-allowlist.sh.
-designs/walkie.pen:generic-api-key:52747
+designs/walkie.pen:generic-api-key:99999

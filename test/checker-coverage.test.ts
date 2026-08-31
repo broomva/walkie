@@ -20,6 +20,8 @@ import { describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 
 const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
+const POSITIVE_CONTROL_TYPE: number = "not a number";
+console.log(POSITIVE_CONTROL_TYPE);
 
 function run(cmd: string[]): string {
   const p = Bun.spawnSync(cmd, { cwd: ROOT });
