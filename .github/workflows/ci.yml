@@ -148,6 +148,19 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: ./scripts/mutation-sweep.sh
 
+  # DRIFT CONTROL (BRO-2385 review): a NEW gate added to jobs: and NOT wired into
+  # needs:. The workflow comment claims the arity assertion turns CI red for
+  # exactly this. This job fails deliberately.
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: the unwired gate fails
+        run: |
+          echo "e2e gate is red"
+          exit 1
+
   # The single required status check. Fails closed on anything that is not an
   # outright success — `skipped` included, because GitHub counts a skipped
   # required check as PASSING, which would make an `if:` on any gate above a
