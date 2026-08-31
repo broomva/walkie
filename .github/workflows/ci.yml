@@ -20,7 +20,7 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'scratch/**']
   pull_request:
 
 # Nothing here writes to the repository. Unspecified scopes default to none.
@@ -147,6 +147,19 @@ jobs:
         run: test -f bun.lock
       - run: bun install --frozen-lockfile
       - run: ./scripts/mutation-sweep.sh
+
+  # PROBE (BRO-2385 review verification): a SIXTH job, deliberately NOT added to
+  # `needs:` of `gates`. If the arity assertion catches the add-case, `gates`
+  # must go red. If it does not, `gates` reports green while this job is red.
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: this gate fails
+        run: |
+          echo "the unwired gate is red"
+          exit 1
 
   # The single required status check. Fails closed on anything that is not an
   # outright success — `skipped` included, because GitHub counts a skipped
