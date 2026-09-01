@@ -11,7 +11,10 @@
     <link rel="stylesheet" href="./app.css" />
   </head>
   <body>
-    <header class="StatusBar"><span id="status" data-kind="ok">connecting…</span></header>
+    <header class="StatusBar">
+      <span id="orb" class="StatusBar__orb"></span>
+      <span id="status" data-kind="ok">connecting…</span>
+    </header>
     <main id="asks" class="Dock"></main>
     <!-- Context renders BELOW the asks, never above. What a person is waiting to
          decide comes first; branch names and CI are the situation around it. -->

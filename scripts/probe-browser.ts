@@ -146,14 +146,24 @@ try {
 
   // A phone viewport, set on the CONTEXT. Headless Chrome's --window-size has a
   // minimum width and silently clips below it, which reports a false overflow.
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  // deviceScaleFactor 2, deliberately. At the default 1 the backing-store
+  // assertion below compares 96 to 96 no matter what the code does with `dpr` —
+  // `const scale = Math.min(dpr, 2)` -> `1` survived the whole probe. Layout
+  // assertions are in CSS pixels and are unaffected.
+  const page = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 2,
+  });
   const errors: string[] = [];
   page.on("console", (m) => {
     if (m.type() === "error") errors.push(m.text());
   });
   page.on("pageerror", (e) => errors.push(String(e)));
 
-  await page.goto(`http://127.0.0.1:${wPort}/index.html?secret=${SECRET}`);
+  // `?probe` opts the orb handle onto `window`. The shipped app exposes nothing:
+  // that object can stop the animation and make the orb lie about the world, so
+  // it is not something to leave on a page a phone loads.
+  await page.goto(`http://127.0.0.1:${wPort}/index.html?probe=1&secret=${SECRET}`);
   await page.waitForSelector(".ThreadTurn", { timeout: 15_000 });
 
   // The bundle actually loaded. `app.js` 404'd here once and every module-level
@@ -314,6 +324,223 @@ try {
     true,
     withContext.dark.scrollWidth <= withContext.dark.clientWidth,
   );
+
+  // THE ORB, ACTUALLY RENDERED. Every unit test for it runs in happy-dom, which
+  // has no WebGL and therefore only ever exercises the degraded `null` path. A
+  // blank canvas is indistinguishable from "nothing is happening" — a state this
+  // orb legitimately has — so the assertion has to be POSITIVE: read the pixels
+  // back and require that something was drawn.
+  // COUNTED, not queried. `querySelector` is singular, so a second orb — the one
+  // thing the ticket forbids outright ("do not build a second orb for any
+  // state") — was invisible to it. happy-dom cannot gate this either: it has no
+  // WebGL, so no canvas mounts there at all and a second `createOrb` is equally
+  // silent. The browser is the only instrument that can see this.
+  // WEBGL, DECIDED ONCE AND LOUDLY. The old "honest skip" branch required a
+  // MOUNTED canvas whose getContext returned null — a shape `createOrb` cannot
+  // produce, because it returns before appending. So a GL-less runner got four
+  // failures, none naming WebGL, and the theme assertion silently did not run.
+  const hasWebGL = await page.evaluate(
+    () => !!document.createElement("canvas").getContext("webgl"),
+  );
+  if (!hasWebGL) bad("no WebGL in this browser — every orb assertion below is unmeasured");
+
+  const orbCount = await page.evaluate(() => document.querySelectorAll("canvas.Orb").length);
+  eq("EXACTLY ONE orb canvas in the document", 1, orbCount);
+
+  const orb = await page.evaluate(() => {
+    const c = document.querySelector("canvas.Orb") as HTMLCanvasElement | null;
+    if (!c) return { present: false } as const;
+    const gl = c.getContext("webgl") as WebGLRenderingContext | null;
+    if (!gl) return { present: true, gl: false } as const;
+    // DRAW, THEN READ, IN THE SAME TASK. WebGL's default framebuffer is created
+    // with `preserveDrawingBuffer: false`, so the browser clears it after
+    // compositing — reading at an arbitrary moment returns an empty buffer no
+    // matter how well the orb is working. The first version of this check did
+    // exactly that and reported a perfectly good orb as blank. An instrument
+    // that false-fails is as useless as one that cannot fail.
+    const w0 = window as unknown as { __walkieOrb?: { frame: (n: number) => void } };
+    if (!w0.__walkieOrb) return { present: true, gl: true, unreachable: true } as const;
+    w0.__walkieOrb.frame(2000);
+    const px = new Uint8Array(c.width * c.height * 4);
+    gl.readPixels(0, 0, c.width, c.height, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    let lit = 0;
+    let partial = 0;
+    let maxA = 0;
+    const seen = new Set<string>();
+    for (let i = 0; i < px.length; i += 4) {
+      const a = px[i + 3] ?? 0;
+      if (a > 8) lit++;
+      if (a > 0 && a < 255) partial++;
+      if (a > maxA) maxA = a;
+      if (seen.size < 64) seen.add(`${px[i]},${px[i + 1]},${px[i + 2]}`);
+    }
+    return {
+      present: true,
+      gl: true,
+      w: c.width,
+      h: c.height,
+      cssW: c.clientWidth,
+      lit,
+      partial,
+      total: px.length / 4,
+      maxA,
+      distinct: seen.size,
+    } as const;
+  });
+  eq("the orb canvas is in the document", true, orb.present);
+
+  // THE PREMULTIPLY FLAG, which is the named regression and which NOTHING else
+  // can observe. The unit tests pass `opts.gl`, short-circuiting `getContext`
+  // entirely; `readPixels` reads the drawing buffer, and this attribute governs
+  // how that buffer is COMPOSITED onto the page. Flipping it to false survived
+  // 204 tests and the whole probe. `getContextAttributes()` is the only surface
+  // that sees it, and the shader's final line and this flag have to agree.
+  const premultiplied = await page.evaluate(() => {
+    const c = document.querySelector("canvas.Orb") as HTMLCanvasElement | null;
+    const gl = c?.getContext("webgl") as WebGLRenderingContext | null;
+    return gl?.getContextAttributes()?.premultipliedAlpha ?? null;
+  });
+  eq("the GL context is PREMULTIPLIED (the white-smudge regression)", true, premultiplied);
+  if ("unreachable" in orb && orb.unreachable) {
+    bad("the orb handle is not on window — cannot draw-then-read");
+  } else if ("gl" in orb && orb.gl && "lit" in orb) {
+    // ASSERTED, not printed. This was `ok(...)` — unconditional — sixty lines
+    // below a comment in this same file condemning exactly that pattern. The DPR
+    // maths it appears to cover was unasserted anywhere: the unit tests pass
+    // `dpr: 1` and never read `canvas.width`, so `Math.min(dpr, 2)` -> `1`
+    // survived the suite.
+    const expectW = Math.round(orb.cssW * Math.min(await page.evaluate(() => devicePixelRatio), 2));
+    eq(`backing store matches css x dpr (${orb.w} vs ${expectW})`, expectW, orb.w);
+    // Something was DRAWN: a transparent canvas would have lit === 0.
+    eq("the orb drew pixels (not a blank canvas)", true, orb.lit > 0);
+    // ...and it is a figure, not a flat fill: a single-colour rectangle would
+    // have one distinct colour and full alpha everywhere.
+    eq("the orb drew a FIGURE, not a flat fill", true, orb.distinct > 4);
+    // COUNTS PARTIAL ALPHA. The old predicate was `maxA > 0 && lit < total` —
+    // "something was drawn" (already asserted above) and "not every pixel is
+    // lit". Neither mentions partial alpha, so a hard-edged binary-alpha figure
+    // satisfied both: P20 inserted `a = step(0.5, a)` into the shader, destroying
+    // every antialiased edge, and this line still printed PASS.
+    eq("the orb has soft edges (pixels with PARTIAL alpha)", true, orb.partial > 0);
+    ok(`  ${orb.partial} partial-alpha pixels of ${orb.total}`);
+  } else if ("gl" in orb && !orb.gl) {
+    // Stated, not silently passed: on a runner without a GL backend this probe
+    // cannot speak to the orb, and saying so is the honest outcome.
+    bad("no WebGL in this browser — the orb assertions did not run");
+  }
+
+  // COLOUR BELONGS TO WORK — rendered, not just asserted in a unit test.
+  //
+  // The probe's genesis fixture has no running thread, so the orb spent the whole
+  // run in the QUIET state. In the shader that means
+  // `amount = clamp(u_work + u_paused, 0, 1) = 0`, which multiplies out `u_you`,
+  // `u_agent`, `u_paused_col` and `u_paused_hi` — four of the six theme colours
+  // never reached a pixel, and the theme comparison below was discriminating on
+  // `u_sphere`/`u_ink` alone.
+  //
+  // Both grabs are taken at the SAME `u_time`, so the difference is the state and
+  // not the animation.
+  const orbWork = await page.evaluate(() => {
+    const c = document.querySelector("canvas.Orb") as HTMLCanvasElement | null;
+    const gl = c?.getContext("webgl") as WebGLRenderingContext | null;
+    const w = window as unknown as {
+      __walkieOrb?: {
+        setState: (s: { working: boolean; paused: boolean }) => void;
+        frame: (n: number) => void;
+      };
+    };
+    if (!c || !gl || !w.__walkieOrb) return null;
+    const settle = (base: number) => {
+      // Monotonic timestamps: `frame()` clamps a backwards dt to zero, so going
+      // backwards would freeze the ease rather than advance it.
+      for (let i = 1; i <= 40; i++) w.__walkieOrb?.frame(base + i * 100);
+    };
+    const grab = () => {
+      const px = new Uint8Array(c.width * c.height * 4);
+      gl.readPixels(0, 0, c.width, c.height, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      let lit = 0;
+      for (let i = 3; i < px.length; i += 4) if ((px[i] ?? 0) > 8) lit++;
+      return { lit, sig: px.join(",") };
+    };
+    w.__walkieOrb.setState({ working: false, paused: false });
+    settle(100000);
+    w.__walkieOrb.frame(200000);
+    const quiet = grab();
+    w.__walkieOrb.setState({ working: true, paused: false });
+    settle(300000);
+    w.__walkieOrb.frame(200000); // the SAME u_time as the quiet grab
+    const working = grab();
+    w.__walkieOrb.setState({ working: false, paused: false });
+    return { differ: quiet.sig !== working.sig, quietLit: quiet.lit, workLit: working.lit };
+  });
+  if (orbWork) {
+    eq("a WORKING orb renders differently from a quiet one", true, orbWork.differ);
+    ok(`  quiet ${orbWork.quietLit} lit vs working ${orbWork.workLit} lit`);
+  } else {
+    bad("could not drive the orb's work state");
+  }
+
+  // THE THEME REACHES THE ORB THE WAY THE APP SWITCHES IT.
+  //
+  // The previous version called `__walkieOrb.setTheme("light")` and observed the
+  // pixels change — which proves the SETTER works and says nothing about whether
+  // the product can enter that state. It could not: `setTheme` had zero
+  // production callers, the app switches by setting `data-theme` on <html>, and
+  // flipping it left the orb byte-identical while the whole page changed colour.
+  //
+  // So this drives `data-theme` and never touches the handle.
+  const orbThemes = await page.evaluate(async () => {
+    const c = document.querySelector("canvas.Orb") as HTMLCanvasElement | null;
+    const gl = c?.getContext("webgl") as WebGLRenderingContext | null;
+    const w = window as unknown as { __walkieOrb?: { frame: (n: number) => void } };
+    if (!c || !gl || !w.__walkieOrb) return null;
+    const grab = (t: number) => {
+      w.__walkieOrb?.frame(t);
+      const px = new Uint8Array(c.width * c.height * 4);
+      gl.readPixels(0, 0, c.width, c.height, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      return px.join(",");
+    };
+    const de = document.documentElement;
+    // MICROTASKS ONLY between the two grabs. `MutationObserver` callbacks run as
+    // microtasks, so `await Promise.resolve()` lets the observer land — while
+    // `setTimeout(0)`, which the first version used, is a TASK and lets the RAF
+    // loop redraw at a different `u_time` in between. That made the two grabs
+    // differ from animation drift no matter what the theme did: the assertion
+    // passed with the observer no-op'd, measuring the clock instead of the theme.
+    de.dataset.theme = "dark";
+    await Promise.resolve();
+    const dark = grab(500000);
+    de.dataset.theme = "light";
+    await Promise.resolve();
+    const light = grab(500000); // SAME u_time — the only difference is the theme
+    de.dataset.theme = "dark";
+    await Promise.resolve();
+    return { differ: dark !== light };
+  });
+  if (orbThemes) {
+    eq("flipping data-theme changes the ORB's pixels (no handle involved)", true, orbThemes.differ);
+  } else {
+    // Never a silent skip: the previous shape had an `else if` that matched
+    // neither arm on a GL-less runner, so the assertion vanished with no PASS
+    // and no FAIL.
+    bad("could not read the orb back — the theme assertion did not run");
+  }
+
+  // THE SHIPPED PAGE EXPOSES NOTHING. The `?probe` gate was the fix for a live
+  // mutable handle in production, and nothing enforced it — `if (…has("probe"))`
+  // -> `if (true)` survived every gate, because the probe only ever loads the
+  // page WITH the flag.
+  const shipped = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await shipped.goto(`http://127.0.0.1:${wPort}/index.html`);
+  await shipped.waitForSelector("canvas.Orb", { timeout: 15_000 });
+  eq(
+    "the shipped page (no ?probe) exposes no orb handle",
+    "undefined",
+    await shipped.evaluate(
+      () => typeof (window as unknown as { __walkieOrb?: unknown }).__walkieOrb,
+    ),
+  );
+  await shipped.close();
 
   // THE LOOP, by tap, in a browser.
   await page.locator('button:has-text("ship")').click();

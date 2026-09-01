@@ -300,3 +300,24 @@ body {
   color: inherit;
   text-decoration: none;
 }
+
+/* The orb. Sizes are the module's presets in CSS pixels; the canvas sets its own
+   width/height so the backing store matches devicePixelRatio. Nothing here
+   scales the figure — the shader derives every radius from the canvas, so one
+   shader serves all three presets. */
+/* The header only. `.StatusBar` is also worn by three <p> elements in the dock,
+   and a second global block turned those into flex containers — so the layout
+   is scoped to the element that actually holds the orb. */
+header.StatusBar {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+.StatusBar__orb {
+  display: inline-flex;
+  flex: 0 0 auto;
+  line-height: 0;
+}
+.Orb {
+  display: block;
+}
