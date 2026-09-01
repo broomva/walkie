@@ -150,5 +150,15 @@ try {
   rmSync(dir, { recursive: true, force: true });
 }
 
+// SAID OUT LOUD, in the output, so 8/8 is not mistaken for browser-verified.
+// happy-dom does not enforce the same-origin policy, and Genesis sends no CORS
+// headers on /walkie/* — measured, a cross-origin preflight 404s. Everything
+// above is therefore a SAME-ORIGIN result. A future reader seeing all-pass must
+// not conclude the client works from another origin, because it does not.
+// (BRO-2416.)
+console.log(
+  "\n  scope: happy-dom does NOT enforce same-origin. These results hold for a\n" +
+    "  same-origin deployment only — Genesis sends no CORS on /walkie/* (BRO-2416).",
+);
 console.log(failures === 0 ? "\n  ALL CHECKS PASSED" : `\n  ${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
