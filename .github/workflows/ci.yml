@@ -173,11 +173,28 @@ jobs:
   # operator-initiated and `enforce_admins` is false anyway, so the owner can
   # already push past this gate; the honest note is that this is a gate against
   # mistakes, not against a determined bypass.
+  # The client actually builds. `bun test` exercises the modules; nothing else
+  # asserts that they bundle for a browser — a type-correct app that fails to
+  # build is still an app nobody can load.
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+      - name: bun.lock must be committed
+        run: test -f bun.lock
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+
   gates:
     name: gates
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [lint, typecheck, test, secrets, discriminates]
+    needs: [lint, typecheck, test, secrets, discriminates, build]
     # Without this the job is SKIPPED when a dependency fails — and a skipped
     # required check reads as green. This line is what makes the gate a gate.
     if: ${{ !cancelled() }}

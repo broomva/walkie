@@ -1,0 +1,156 @@
+/* Tokens, both themes. The design's exports are dark-only — light is AUTHORED
+   here, not exported, which is why every colour is a token rather than a literal:
+   a hard-coded hex is a value that cannot flip. */
+:root,
+[data-theme="dark"] {
+  --bg: #0b0f14;
+  --surface: #121821;
+  --edge: #1e2731;
+  --text: #e6edf3;
+  --muted: #8b98a5;
+  --accent: #4a9eff;
+  --warn: #ffb454;
+}
+[data-theme="light"] {
+  --bg: #f6f8fa;
+  --surface: #ffffff;
+  --edge: #d7dde3;
+  --text: #1c2128;
+  --muted: #57606a;
+  --accent: #0969da;
+  --warn: #9a6700;
+}
+
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px / 1.5 ui-sans-serif, system-ui, -apple-system, sans-serif;
+  /* The safe-area insets, so the first ask is not under the notch and the last
+     is not under the home indicator. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+}
+
+.StatusBar {
+  padding: 0.75rem 1rem;
+  color: var(--muted);
+  border-bottom: 1px solid var(--edge);
+  font-size: 0.875rem;
+}
+.StatusBar [data-kind="error"] {
+  color: var(--warn);
+}
+.StatusBar--degraded {
+  color: var(--warn);
+  border: 0;
+}
+.StatusBar--empty {
+  color: var(--muted);
+  border: 0;
+  padding: 2rem 1rem;
+}
+
+.Dock {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.ThreadTurn {
+  background: var(--surface);
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  padding: 1rem;
+  /* min-width:0 — without it a long unbroken token in an agent's question makes
+     the flex item refuse to shrink and the whole page scrolls sideways. The
+     light/dark probe asserts scrollWidth, and this is what keeps it honest. */
+  min-width: 0;
+}
+.ThreadTurn__header {
+  margin: 0 0 0.25rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.TurnLine {
+  margin: 0 0 0.5rem;
+  font-size: 1.0625rem;
+  overflow-wrap: anywhere;
+}
+.ChannelLine {
+  margin: 0 0 0.75rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+.ThreadTurn__answer {
+  margin: 0;
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+
+.OptionLine__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.OptionLine {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  /* 44px — the platform's minimum comfortable tap target. An option the operator
+     misses is an ask that stays pending. */
+  min-height: 44px;
+  padding: 0.625rem 0.875rem;
+  font: inherit;
+}
+.OptionLine:active {
+  border-color: var(--accent);
+}
+.OptionLine__label {
+  font-weight: 600;
+}
+.OptionLine__description {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.OptionLine__free {
+  display: flex;
+  gap: 0.5rem;
+}
+.OptionLine__input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  font: inherit;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+}
+.OptionLine__submit {
+  min-height: 44px;
+  padding: 0.5rem 1rem;
+  font: inherit;
+  cursor: pointer;
+  background: var(--accent);
+  color: var(--bg);
+  border: 0;
+  border-radius: 10px;
+}

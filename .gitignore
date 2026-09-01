@@ -4,3 +4,4 @@ node_modules/
 .session*.json
 .say.aiff
 *.log
+dist/
