@@ -275,8 +275,8 @@ mutate "truncation stops being disclosed" src/render.ts \
 
 echo "the read verbs — the two invariants that are security decisions (BRO-2388)"
 mutate "a read verb points at the OWNER-GATED twin instead of the mirror" src/api.ts \
-  'const body = (await call(cfg, "/walkie/threads")) as { threads?: readonly Thread[] };' \
-  'const body = (await call(cfg, "/threads")) as { threads?: readonly Thread[] };' \
+  '      `/walkie/threads?limit=${THREAD_PAGE}&offset=${page * THREAD_PAGE}`,' \
+  '      `/threads?limit=${THREAD_PAGE}&offset=${page * THREAD_PAGE}`,' \
   "each read hits a /walkie/ path"
 
 mutate "the secret moves from the header into the query string" src/api.ts \
@@ -318,8 +318,8 @@ mutate "GitStatus.files stops defaulting when the body omits it" src/api.ts \
   "absent collection reads as empty"
 
 mutate "an absent collection stops defaulting to empty" src/api.ts \
-  'return body.threads ?? [];' \
-  'return body.threads as readonly Thread[];' \
+  '    const batch = body.threads ?? [];' \
+  '    const batch = body.threads as readonly Thread[];' \
   "absent collection reads as empty"
 
 echo "coverage — the checkers must read everything"

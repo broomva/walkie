@@ -225,10 +225,44 @@ export interface ChecksResult {
 const wsPath = (workspaceId: string, suffix: string) =>
   `/walkie/workspaces/${encodeURIComponent(workspaceId)}${suffix}`;
 
-/** Every thread the server knows, newest first. */
+/** One request's worth of threads. Genesis caps a `/walkie/threads` response at
+ *  200 (BRO-2418), so this client pages rather than showing a truncated list. */
+const THREAD_PAGE = 200;
+
+/** A runaway guard, NOT a display limit — `hasMore` ending the loop is the
+ *  normal exit. It bounds a server that never says false; at 25 pages that is
+ *  5000 threads, and a box with more than that has a different problem than
+ *  this loop. */
+const MAX_THREAD_PAGES = 25;
+
+/** Every thread the server knows, newest first.
+ *
+ *  PAGES. Genesis bounds each response, and this client asked for one page and
+ *  showed it — so a box with more than 200 threads would have displayed 200 of
+ *  N with nothing saying so. The deployed box had 226 when this was written.
+ *  `apps/web` was fixed in the same wave; a bound is only safe once EVERY
+ *  consumer pages, and this one is in a different repository, which is exactly
+ *  how it was missed the first time.
+ *
+ *  Accumulated through a Map keyed on `threadId`, not a concatenation: offset
+ *  paging over a list that mutates between requests otherwise duplicates a row
+ *  when a thread is created mid-loop (verified: it shifts the window) and the
+ *  UI keys on `threadId`. Losing a row to a concurrent delete is left alone —
+ *  the next refresh restores it, and inventing one would be worse. */
 export async function fetchThreads(cfg: Config): Promise<readonly Thread[]> {
-  const body = (await call(cfg, "/walkie/threads")) as { threads?: readonly Thread[] };
-  return body.threads ?? [];
+  const byId = new Map<string, Thread>();
+  for (let page = 0; page < MAX_THREAD_PAGES; page++) {
+    const body = (await call(
+      cfg,
+      `/walkie/threads?limit=${THREAD_PAGE}&offset=${page * THREAD_PAGE}`,
+    )) as { threads?: readonly Thread[]; hasMore?: boolean };
+    const batch = body.threads ?? [];
+    for (const t of batch) byId.set(t.threadId, t);
+    // An empty page also ends it: a server claiming `hasMore` while returning
+    // nothing would otherwise spin to the page cap.
+    if (!body.hasMore || batch.length === 0) break;
+  }
+  return [...byId.values()];
 }
 
 /** The selectable workspaces, plus which one a new thread binds by default. */
