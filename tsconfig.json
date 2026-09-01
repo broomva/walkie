@@ -4,7 +4,16 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "moduleDetection": "force",
-    "lib": ["ESNext"],
+    // DOM added for the PWA (BRO-2388). ONE tsconfig, deliberately: the
+    // checker-coverage gate runs a single root `tsc --listFiles` and asserts
+    // every tracked .ts is in that program, so splitting src into its own
+    // project would drop the whole client out of the check it most needs.
+    //
+    // The cost, stated: server-side files under scripts/ and probes/ can now
+    // reference DOM types without tsc objecting. That is a real loosening and it
+    // is the smaller one — a coverage gate that stops seeing the majority of the
+    // codebase is the failure this repo's AGENTS.md names first.
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "types": ["bun"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
@@ -15,5 +24,5 @@
     "resolveJsonModule": true,
     "noEmit": true
   },
-  "include": ["probes/**/*.ts", "test/**/*.ts", "scripts/**/*.ts"]
+  "include": ["src/**/*.ts", "probes/**/*.ts", "test/**/*.ts", "scripts/**/*.ts"]
 }

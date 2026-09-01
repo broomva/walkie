@@ -8,11 +8,17 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "test": "bun test",
-    "verify:gitleaks": "./scripts/verify-gitleaks-allowlist.sh"
+    "verify:gitleaks": "./scripts/verify-gitleaks-allowlist.sh",
+    "build": "bun scripts/build-pwa.ts",
+    "dev": "bun scripts/dev-server.ts",
+    "dogfood": "bun scripts/dogfood-pwa.ts",
+    "probe:browser": "bun scripts/probe-browser.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
     "@types/bun": "^1.4.0",
+    "happy-dom": "^20.12.0",
+    "playwright": "^1.62.1",
     "typescript": "^5.7.2"
   }
 }

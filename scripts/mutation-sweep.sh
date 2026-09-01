@@ -33,6 +33,7 @@ fi
 # only the two config files while also mutating a test file, which would have
 # left that mutation in the tree.
 SUBJECTS=(tsconfig.json biome.json .github/workflows/ci.yml scripts/assert-gates-succeeded.sh
+          src/main.ts
           test/control-files.test.ts test/checker-coverage.test.ts test/workflow-gates.test.ts
           test/gates-predicate.test.ts test/no-local-paths.test.ts)
 
@@ -67,7 +68,7 @@ total=0
 # the gates can fail would go green having measured nothing. Unlike the arity
 # check this replaced in ci.yml, these two numbers are independent: `total` is
 # incremented by calls that actually ran, EXPECTED_MUTANTS is a separate literal.
-EXPECTED_MUTANTS=11
+EXPECTED_MUTANTS=12
 
 # mutate <label> <file> <anchor> <replacement> <expected-failing-test-substring>
 mutate() {
@@ -134,7 +135,7 @@ PY
 
 echo "coverage — the checkers must read everything"
 mutate "tsconfig.include narrowed to test/ only" tsconfig.json \
-  '"include": ["probes/**/*.ts", "test/**/*.ts", "scripts/**/*.ts"]' \
+  '"include": ["src/**/*.ts", "probes/**/*.ts", "test/**/*.ts", "scripts/**/*.ts"]' \
   '"include": ["test/**/*.ts"]' \
   "outside the program"
 
@@ -160,6 +161,16 @@ mutate "tsconfig strict off" tsconfig.json \
   '"strict": true' \
   '"strict": false' \
   "rejects code violating the strictness"
+
+echo "the client build gate (BRO-2388)"
+# THE BUILD GATE IS A GATE, so it gets a mutant like every other one. Mutating the
+# SOURCE rather than the workflow: the question is whether a client that no longer
+# bundles can reach main, and only a real bundling failure answers it. `build`
+# being wired into gates.needs is covered by the job/needs mutant below.
+mutate "the client stops bundling" src/main.ts \
+  'import { createApp } from "./app";' \
+  'import { createApp } from "./this-module-does-not-exist";' \
+  "bundles for a browser"
 
 echo "the required check — it must cover every job"
 mutate "a job added to ci.yml but left out of gates.needs" .github/workflows/ci.yml \

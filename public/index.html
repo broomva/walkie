@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <!-- viewport-fit=cover + the safe-area insets below: without it the dock sits
+         under the home indicator on a notched iPhone, which is where this runs. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0f14" />
+    <title>walkie</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./app.css" />
+  </head>
+  <body>
+    <header class="StatusBar"><span id="status" data-kind="ok">connecting…</span></header>
+    <main id="asks" class="Dock"></main>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
