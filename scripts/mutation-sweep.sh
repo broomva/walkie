@@ -71,7 +71,7 @@ total=0
 # the gates can fail would go green having measured nothing. Unlike the arity
 # check this replaced in ci.yml, these two numbers are independent: `total` is
 # incremented by calls that actually ran, EXPECTED_MUTANTS is a separate literal.
-EXPECTED_MUTANTS=53
+EXPECTED_MUTANTS=54
 
 # mutate <label> <file> <anchor> <replacement> <expected-failing-test-substring>
 mutate() {
@@ -420,6 +420,15 @@ mutate "the score's denominator floats again (a skipped check reads as a pass)" 
   "const total = required.length + optionalRan;" \
   "const total = results.length;" \
   "smaller denominator"
+
+# A review found this one: distinctness alone let a MIXED duplicate (one execution
+# ok, one not) count as passed, so the report could print "11/11 checks passed" and
+# "FAIL" in the same breath — a number contradicting its own verdict.
+mutate "a mixed duplicate counts as passed, so the score contradicts the verdict" \
+  probes/elevenlabs-e2e/score.ts \
+  "      .filter((r) => r.ok && known.has(r.name) && !failedNames.has(r.name))" \
+  "      .filter((r) => r.ok && known.has(r.name))" \
+  "MIXED duplicate does not count as passed"
 
 mutate "reconcile stops reporting a declared check that never ran" \
   probes/elevenlabs-e2e/score.ts \

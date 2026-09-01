@@ -88,10 +88,13 @@ describe("wait-for-session.sh budget (D4)", () => {
     }
   }, 15_000);
 
-  test("it returns the record as soon as one appears", () => {
+  test("it returns the record as soon as one appears", async () => {
     const dir = mkdtempSync(join(tmpdir(), "walkie-wait-"));
     try {
-      Bun.write(join(dir, "s.json"), '{"name":"walkie-e2e-target"}');
+      // AWAITED. `Bun.write` returns a promise and `Bun.spawnSync` runs
+      // immediately, so unawaited the waiter could scan the directory before the
+      // fixture existed — a test that passes on timing rather than on behaviour.
+      await Bun.write(join(dir, "s.json"), '{"name":"walkie-e2e-target"}');
       const r = Bun.spawnSync([`${PROBE}/wait-for-session.sh`, "walkie-e2e-target", "5", dir]);
       expect(r.exitCode).toBe(0);
       expect(r.stdout.toString().trim()).toBe(join(dir, "s.json"));

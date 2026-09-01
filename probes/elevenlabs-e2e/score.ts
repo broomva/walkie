@@ -100,11 +100,18 @@ export function reconcile(
   const failed = results.filter((r) => !r.ok);
   const optionalRan = optional.filter((n) => seen.has(n)).length;
   const total = required.length + optionalRan;
-  // DISTINCT names. Counting rows lets a duplicated check inflate the numerator
-  // past the denominator — `12/11 checks passed` — in the one module whose whole
-  // job is that the number means something. Duplicates are red either way, but a
-  // red must not also be arithmetically impossible.
-  const passed = new Set(results.filter((r) => r.ok && known.has(r.name)).map((r) => r.name)).size;
+  // DISTINCT names, and a name that failed in ANY execution is NOT passed.
+  //
+  // Distinctness alone stops a duplicate inflating the numerator past the
+  // denominator (`12/11`). It does not stop the MIXED duplicate: one execution
+  // ok and one not put the name in both sets, so the report could print
+  // `11/11 checks passed` and `FAIL` in the same breath — the one module whose
+  // whole job is that the number means something, printing a number that
+  // contradicts its own verdict.
+  const failedNames = new Set(failed.map((r) => r.name));
+  const passed = new Set(
+    results.filter((r) => r.ok && known.has(r.name) && !failedNames.has(r.name)).map((r) => r.name),
+  ).size;
 
   return {
     missing,

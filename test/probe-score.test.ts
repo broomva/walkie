@@ -95,6 +95,24 @@ describe("probe score reconciliation", () => {
     expect(() => reconcile(REQUIRED.map(ok), [], OPTIONAL)).toThrow();
   });
 
+  test("a MIXED duplicate does not count as passed", () => {
+    // One execution of a check ok, another not. Distinctness alone put the name
+    // in `passed` because SOME execution passed, so the report could print
+    // "11/11 checks passed" and "FAIL" together — a number contradicting its own
+    // verdict, in the module whose whole job is that the number means something.
+    const dup = REQUIRED[0] as string;
+    const r = reconcile(
+      [...REQUIRED.map(ok), { name: dup, ok: false, detail: "second run failed" }],
+      REQUIRED,
+      OPTIONAL,
+    );
+    expect(r.ok).toBe(false);
+    expect(r.duplicated).toContain(dup);
+    // the load-bearing one: the name must NOT be credited
+    expect(r.passed).toBe(REQUIRED.length - 1);
+    expect(r.passed).toBeLessThan(r.total);
+  });
+
   test("a genuine FAIL is still red", () => {
     const ran = REQUIRED.map((n) =>
       n === "ASR heard the workspace answer" ? { name: n, ok: false, detail: "(none)" } : ok(n),
