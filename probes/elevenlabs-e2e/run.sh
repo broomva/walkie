@@ -7,6 +7,27 @@
 # client tools are executed by whoever drives the conversation, which is this.
 set -euo pipefail
 cd "$(dirname "$0")"
+
+# D5: this script always ran drive.ts — the TEXT probe — while the record cited
+# `./run.sh` as the reproduction for a result ("agent SPEAKS the ask", "10.4s of
+# pcm_16000") that only drive-audio.ts can produce. Both probes print a score in
+# the same format, so a text 10/10 was indistinguishable on the console from the
+# audio run it was being read as. The transport is now chosen here, named in the
+# log, and — for the audio path — pinned by a real assertion downstream
+# (`agent audio actually came back` fails when no audio events arrive). The text
+# path asserts nothing about transport, so this comment does not claim it does.
+# --- mode-select-begin --- (executed verbatim by test/probe-run-modes.test.ts;
+# the markers are load-bearing, and an inherited WALKIE_AUDIO must be CLEARED on
+# the text path or the banner names one transport while create-agent builds the
+# other — D5 restated through the environment.)
+MODE=text
+case "${1:-}" in
+  --audio) MODE=audio; export WALKIE_AUDIO=1 ;;
+  --text|"") export WALKIE_AUDIO=0 ;;
+  *) echo "usage: run.sh [--audio|--text]" >&2; exit 2 ;;
+esac
+# --- mode-select-end ---
+echo "== walkie e2e: ${MODE} transport =="
 : "${ELEVENLABS_API_KEY:?set ELEVENLABS_API_KEY}"
 
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
@@ -29,12 +50,12 @@ tmux new-session -d -s walkie-e2e -c "$WORK/session" \
 # A session in a fresh directory blocks on the trust prompt and never registers
 # until it is cleared. Any automated spawn path has to do this.
 sleep 3; tmux send-keys -t walkie-e2e Enter
-for _ in $(seq 1 90); do
-  REC="$(grep -l walkie-e2e-target "$HOME"/.claude/sessions/*.json 2>/dev/null | head -1 || true)"
-  [ -n "${REC:-}" ] && break
-done
-[ -n "${REC:-}" ] || { echo "session never registered"; exit 1; }
+REC="$(./wait-for-session.sh walkie-e2e-target "${WALKIE_SESSION_WAIT_SECS:-90}")"
 cp "$REC" .session.json
 ln -sfn "$WORK/session" session
 
-bun run drive.ts
+if [ "$MODE" = audio ]; then
+  bun run drive-audio.ts
+else
+  bun run drive.ts
+fi

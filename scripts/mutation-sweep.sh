@@ -35,7 +35,10 @@ fi
 SUBJECTS=(tsconfig.json biome.json .github/workflows/ci.yml scripts/assert-gates-succeeded.sh
           src/main.ts src/api.ts src/render.ts src/app.ts src/orb.ts designs/orb.glsl test/api.test.ts
           test/control-files.test.ts test/checker-coverage.test.ts test/workflow-gates.test.ts
-          test/gates-predicate.test.ts test/no-local-paths.test.ts)
+          test/gates-predicate.test.ts test/no-local-paths.test.ts
+          probes/elevenlabs-e2e/score.ts probes/elevenlabs-e2e/drive.ts
+          probes/elevenlabs-e2e/drive-audio.ts probes/elevenlabs-e2e/run.sh
+          probes/elevenlabs-e2e/wait-for-session.sh AGENTS.md)
 
 # The baseline must be GREEN. A mutation sweep over a suite that is already red
 # scores every mutant "killed" — for reasons that have nothing to do with the
@@ -68,7 +71,7 @@ total=0
 # the gates can fail would go green having measured nothing. Unlike the arity
 # check this replaced in ci.yml, these two numbers are independent: `total` is
 # incremented by calls that actually ran, EXPECTED_MUTANTS is a separate literal.
-EXPECTED_MUTANTS=48
+EXPECTED_MUTANTS=54
 
 # mutate <label> <file> <anchor> <replacement> <expected-failing-test-substring>
 mutate() {
@@ -274,6 +277,10 @@ mutate "truncation stops being disclosed" src/render.ts \
   "truncation is disclosed"
 
 echo "the read verbs — the two invariants that are security decisions (BRO-2388)"
+# Retargeted: walkie#13 made this call paged, so the literal path became a
+# template and both of this file's api.ts anchors went stale. #11's sweep still
+# passed because its LAST CI run predates that merge — a green check covering an
+# older base, which is the thing this repo has been bitten by before.
 mutate "a read verb points at the OWNER-GATED twin instead of the mirror" src/api.ts \
   '      `/walkie/threads?limit=${THREAD_PAGE}&offset=${page * THREAD_PAGE}`,' \
   '      `/threads?limit=${THREAD_PAGE}&offset=${page * THREAD_PAGE}`,' \
@@ -401,6 +408,57 @@ mutate ".jsonl dropped from the extension list" test/control-files.test.ts \
   "accounted for"
 
 echo
+# --- BRO-2406: the probe's own gates ---------------------------------------
+#
+# The probe had five defects whose common shape was "a check that cannot fail".
+# Fixing them added guards, and a guard whose failure is never demonstrated is
+# that same defect one level up — so each guard gets a mutant HERE, in the gate
+# CI actually runs, rather than only in a shell transcript.
+
+mutate "the score's denominator floats again (a skipped check reads as a pass)" \
+  probes/elevenlabs-e2e/score.ts \
+  "const total = required.length + optionalRan;" \
+  "const total = results.length;" \
+  "smaller denominator"
+
+# A review found this one: distinctness alone let a MIXED duplicate (one execution
+# ok, one not) count as passed, so the report could print "11/11 checks passed" and
+# "FAIL" in the same breath — a number contradicting its own verdict.
+mutate "a mixed duplicate counts as passed, so the score contradicts the verdict" \
+  probes/elevenlabs-e2e/score.ts \
+  "    results.filter((r) => r.ok && known.has(r.name) && !failedNames.has(r.name)).map((r) => r.name)," \
+  "    results.filter((r) => r.ok && known.has(r.name)).map((r) => r.name)," \
+  "MIXED duplicate does not count as passed"
+
+mutate "reconcile stops reporting a declared check that never ran" \
+  probes/elevenlabs-e2e/score.ts \
+  "const missing = required.filter((n) => !seen.has(n));" \
+  "const missing: string[] = [];" \
+  "smaller denominator"
+
+mutate "a check predicate reverts to a literal that can never FAIL" \
+  probes/elevenlabs-e2e/drive-audio.ts \
+  "    sawInterruption," \
+  "    true," \
+  "asserts a literal"
+
+mutate "run.sh --audio quietly runs the TEXT probe" \
+  probes/elevenlabs-e2e/run.sh \
+  "  bun run drive-audio.ts" \
+  "  bun run drive.ts" \
+  "the dispatch actually runs"
+
+mutate "the session wait stops sleeping, so its stated budget expires at once" \
+  probes/elevenlabs-e2e/wait-for-session.sh \
+  "  sleep 1" \
+  "  :" \
+  "AT LEAST its budget"
+
+# The mutant for the retracted probe claim lives with the pieces it needs: it
+# mutates AGENTS.md and is killed by test/probe-record-claims.test.ts, and BOTH
+# stay in #11 because that test polices the AGENTS.md edit. Splitting them apart
+# would leave a mutant here with no kill-test and a gate there with no mutant.
+
 if [ "$total" -ne "$EXPECTED_MUTANTS" ]; then
   echo "$total mutants ran, expected $EXPECTED_MUTANTS — a mutant was added or removed"
   exit 1
@@ -410,6 +468,7 @@ fi
 # success, so a $BAK that went unwritable mid-run would silently leave a mutation
 # in place and every later verdict would be about the wrong file.
 restore
+
 if [ -n "$(git -c core.fsmonitor=false status --porcelain)" ]; then
   echo "the tree was not restored cleanly:"
   git -c core.fsmonitor=false status --porcelain

@@ -19,7 +19,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
 

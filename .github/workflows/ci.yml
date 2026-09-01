@@ -142,7 +142,14 @@ jobs:
   discriminates:
     name: discriminates
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 20, not 10. The sweep runs the whole suite once per mutant, so its runtime
+    # is mutants x suite and both grew in this PR: 48 -> 54 mutants over 254 ->
+    # 258 tests took the job from 7m01s to 8m00s. Measured across this branch:
+    # 4m03s, 5m16s, 7m01s, 7m51s, 8m00s. Against a 10-minute cap that is ~20%
+    # headroom, and `gates` requires this job — so ordinary runner variance would
+    # have turned a green suite into a red required check. Raised deliberately
+    # rather than by trimming mutants: the job is doing more, and it should.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0

@@ -11,18 +11,24 @@
 
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { connect } from "node:net";
+import {
+  type Check,
+  AUDIO_OPTIONAL as OPTIONAL,
+  AUDIO_REQUIRED as REQUIRED,
+  reconcile,
+  report,
+} from "./score";
 
 const DIR = import.meta.dir;
 const KEY = process.env.ELEVENLABS_API_KEY;
 const AGENT = readFileSync(`${DIR}/.agent_id`, "utf8").trim();
 const SESSION = JSON.parse(readFileSync(`${DIR}/.session.json`, "utf8"));
-const VOICE = process.env.WALKIE_TEST_VOICE ?? "SAz9YHcvj6GT2YYXdXww";
 if (!KEY) {
   console.error("no ELEVENLABS_API_KEY");
   process.exit(1);
 }
 
-const results: { name: string; ok: boolean; detail: string }[] = [];
+const results: Check[] = [];
 const check = (name: string, ok: boolean, detail = "") => {
   results.push({ name, ok, detail });
   console.log(`  ${ok ? "PASS" : "FAIL"}  ${name}${detail ? `  — ${detail}` : ""}`);
@@ -110,7 +116,9 @@ let drained = false;
 let sawAnswer = false;
 let spokeAnswer = false;
 let sawInterruption = false;
-let agentText = "";
+let finishing = false;
+let finished = false;
+const toolCalls: string[] = [];
 
 /** Stream PCM as ~250ms frames, paced roughly realtime so VAD behaves.
  *
@@ -132,6 +140,15 @@ async function stream(pcm: Buffer, label: string, tailMs = 2000) {
 }
 
 const finish = async (code: number) => {
+  // ONCE, and separately from the terminal branch's latch — which is set BEFORE
+  // finish() is called, so reusing it here would return immediately. The socket
+  // `error` handler is a second entry point: finish() polls for up to 30s with
+  // the socket still open (ws.close() is at the end), so an abnormal termination
+  // in that window re-enters and pushes its checks twice. reconcile then reports
+  // DUPLICATE and a run where every leg passed comes out red.
+  if (finished) return;
+  finished = true;
+
   // Resolve from the session registry's own cwd, never from a symlink this
   // script maintains. A missing file cannot distinguish "the session did not
   // act" from "I looked in the wrong place" — and the second one happened.
@@ -151,13 +168,23 @@ const finish = async (code: number) => {
     found,
     found ? body.slice(0, 80).replace(/\n/g, " ") : "no answered.txt",
   );
+  // D1: this event was captured and then discarded — nothing read
+  // `sawInterruption`. Barge-in is load-bearing in the declared architecture
+  // (full duplex was kept and PTT reduced to a gesture partly on the strength of
+  // that belief — whether it holds is an open measurement, not a settled fact),
+  // and that property rested on one line of console output from one run.
+  check(
+    "barge-in: an interruption event was observed",
+    sawInterruption,
+    sawInterruption ? "interruption event seen" : "no interruption event in this run",
+  );
   console.log(`\n--- event types seen ---\n  ${[...new Set(seen)].join("\n  ")}`);
-  const bad = results.filter((r) => !r.ok);
-  console.log(`\n${results.length - bad.length}/${results.length} checks passed`);
+  const scored = reconcile(results, REQUIRED, OPTIONAL);
+  console.log(report(scored));
   try {
     ws.close();
   } catch {}
-  process.exit(bad.length ? 1 : code);
+  process.exit(scored.ok ? code : 1);
 };
 
 const timer = setTimeout(() => {
@@ -183,11 +210,8 @@ ws.addEventListener("message", async (m: any) => {
   if (ev.type === "ping") send({ type: "pong", event_id: ev.ping_event?.event_id });
 
   if (ev.type === "conversation_initiation_metadata") {
-    check(
-      "conversation started in audio mode",
-      true,
-      String(ev.conversation_initiation_metadata_event?.conversation_id ?? "").slice(0, 18),
-    );
+    const cid = String(ev.conversation_initiation_metadata_event?.conversation_id ?? "");
+    check("conversation opened with an id", cid.length > 0, cid.slice(0, 18));
     await stream(await speak("What needs me right now?"), "what needs me right now?");
   }
 
@@ -206,9 +230,14 @@ ws.addEventListener("message", async (m: any) => {
 
   if (ev.type === "client_tool_call") {
     const c = ev.client_tool_call;
+    toolCalls.push(c.tool_name);
     if (c.tool_name === "get_pending") {
       drained = true;
-      check("first tool call drains the queue (audio path)", true, "get_pending");
+      check(
+        "first tool call drains the queue (audio path)",
+        toolCalls.length === 1,
+        `calls so far: ${toolCalls.join(", ")}`,
+      );
       send({
         type: "client_tool_result",
         tool_call_id: c.tool_call_id,
@@ -244,7 +273,6 @@ ws.addEventListener("message", async (m: any) => {
 
   if (ev.type === "agent_response") {
     const t = ev.agent_response_event?.agent_response ?? "";
-    agentText += `${t} `;
     if (drained && !spokeAnswer && !sawAnswer) {
       spokeAnswer = true;
       check(
@@ -256,7 +284,11 @@ ws.addEventListener("message", async (m: any) => {
         await speak("Go with Genesis sessions only, the safest one."),
         "go with genesis sessions only",
       );
-    } else if (sawAnswer) {
+      // ONCE, for the same reason as the sibling branch: finish() polls for up
+      // to 30s inside an async listener, so a later agent_response would re-enter
+      // and duplicate every assertion below.
+    } else if (sawAnswer && !finishing) {
+      finishing = true;
       clearTimeout(timer);
       // Assertions that need the whole run in hand.
       const heard = transcripts.join(" ").toLowerCase();
