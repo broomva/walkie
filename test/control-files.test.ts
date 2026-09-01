@@ -29,7 +29,6 @@ import { readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
-const CONTROL = join(ROOT, ".control");
 const EXTENSIONS = [".yaml", ".yml", ".json", ".jsonl"];
 
 /**

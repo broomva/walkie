@@ -60,8 +60,10 @@ superseded_verdicts:
     now: >-
       ElevenLabs. The reasoning was sound and the premise stopped applying —
       pause-and-resume makes server-side injection unnecessary, so the enterprise
-      gate is not on the path. The probe then closed the loop 10/10 with real
-      audio (BRO-2364), integrations/ carries only elevenlabs, and the Swift SDK
+      gate is not on the path. The probe then closed the loop with real audio
+      (BRO-2364; the 10/10 score it was recorded with was not a fixed target —
+      see BRO-2406 — but the loop did close), integrations/ carries only
+      elevenlabs, and the Swift SDK
       is first-party where every Rust crate is unofficial. OpenAI is additionally
       credit_balance_exhausted on this account.
     lesson: >-

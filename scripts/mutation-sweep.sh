@@ -35,7 +35,10 @@ fi
 SUBJECTS=(tsconfig.json biome.json .github/workflows/ci.yml scripts/assert-gates-succeeded.sh
           src/main.ts src/api.ts src/render.ts src/app.ts src/orb.ts designs/orb.glsl test/api.test.ts
           test/control-files.test.ts test/checker-coverage.test.ts test/workflow-gates.test.ts
-          test/gates-predicate.test.ts test/no-local-paths.test.ts)
+          test/gates-predicate.test.ts test/no-local-paths.test.ts
+          probes/elevenlabs-e2e/score.ts probes/elevenlabs-e2e/drive.ts
+          probes/elevenlabs-e2e/drive-audio.ts probes/elevenlabs-e2e/run.sh
+          probes/elevenlabs-e2e/wait-for-session.sh AGENTS.md)
 
 # The baseline must be GREEN. A mutation sweep over a suite that is already red
 # scores every mutant "killed" — for reasons that have nothing to do with the
@@ -68,7 +71,7 @@ total=0
 # the gates can fail would go green having measured nothing. Unlike the arity
 # check this replaced in ci.yml, these two numbers are independent: `total` is
 # incremented by calls that actually ran, EXPECTED_MUTANTS is a separate literal.
-EXPECTED_MUTANTS=48
+EXPECTED_MUTANTS=54
 
 # mutate <label> <file> <anchor> <replacement> <expected-failing-test-substring>
 mutate() {
@@ -275,8 +278,8 @@ mutate "truncation stops being disclosed" src/render.ts \
 
 echo "the read verbs — the two invariants that are security decisions (BRO-2388)"
 mutate "a read verb points at the OWNER-GATED twin instead of the mirror" src/api.ts \
-  '      `/walkie/threads?limit=${THREAD_PAGE}&offset=${page * THREAD_PAGE}`,' \
-  '      `/threads?limit=${THREAD_PAGE}&offset=${page * THREAD_PAGE}`,' \
+  'const body = (await call(cfg, "/walkie/threads")) as { threads?: readonly Thread[] };' \
+  'const body = (await call(cfg, "/threads")) as { threads?: readonly Thread[] };' \
   "each read hits a /walkie/ path"
 
 mutate "the secret moves from the header into the query string" src/api.ts \
@@ -318,8 +321,8 @@ mutate "GitStatus.files stops defaulting when the body omits it" src/api.ts \
   "absent collection reads as empty"
 
 mutate "an absent collection stops defaulting to empty" src/api.ts \
-  '    const batch = body.threads ?? [];' \
-  '    const batch = body.threads as readonly Thread[];' \
+  'return body.threads ?? [];' \
+  'return body.threads as readonly Thread[];' \
   "absent collection reads as empty"
 
 echo "coverage — the checkers must read everything"
@@ -401,6 +404,53 @@ mutate ".jsonl dropped from the extension list" test/control-files.test.ts \
   "accounted for"
 
 echo
+# --- BRO-2406: the probe's own gates ---------------------------------------
+#
+# The probe had five defects whose common shape was "a check that cannot fail".
+# Fixing them added guards, and a guard whose failure is never demonstrated is
+# that same defect one level up — so each guard gets a mutant HERE, in the gate
+# CI actually runs, rather than only in a shell transcript.
+
+mutate "the score's denominator floats again (a skipped check reads as a pass)" \
+  probes/elevenlabs-e2e/score.ts \
+  "const total = required.length + optionalRan;" \
+  "const total = results.length;" \
+  "smaller denominator"
+
+mutate "reconcile stops reporting a declared check that never ran" \
+  probes/elevenlabs-e2e/score.ts \
+  "const missing = required.filter((n) => !seen.has(n));" \
+  "const missing: string[] = [];" \
+  "smaller denominator"
+
+mutate "a check predicate reverts to a literal that can never FAIL" \
+  probes/elevenlabs-e2e/drive-audio.ts \
+  "    sawInterruption," \
+  "    true," \
+  "asserts a literal"
+
+mutate "run.sh --audio quietly runs the TEXT probe" \
+  probes/elevenlabs-e2e/run.sh \
+  "  bun run drive-audio.ts" \
+  "  bun run drive.ts" \
+  "the dispatch actually runs"
+
+mutate "the session wait stops sleeping, so its stated budget expires at once" \
+  probes/elevenlabs-e2e/wait-for-session.sh \
+  "  sleep 1" \
+  "  :" \
+  "AT LEAST its budget"
+
+# The claim is ASSEMBLED, never written literally: test/probe-record-claims.test.ts
+# scans every tracked file for exactly this string, so spelling it out here would
+# make the sweep flag itself and the gate would be unfalsifiable.
+RETRACTED_HEAD="PROVEN"
+mutate "a retracted probe claim comes back as live text" \
+  AGENTS.md \
+  "## The end-to-end probe" \
+  "## The end-to-end probe is ${RETRACTED_HEAD} — 10/10" \
+  "retracted claim appears"
+
 if [ "$total" -ne "$EXPECTED_MUTANTS" ]; then
   echo "$total mutants ran, expected $EXPECTED_MUTANTS — a mutant was added or removed"
   exit 1
@@ -410,6 +460,7 @@ fi
 # success, so a $BAK that went unwritable mid-run would silently leave a mutation
 # in place and every later verdict would be about the wrong file.
 restore
+
 if [ -n "$(git -c core.fsmonitor=false status --porcelain)" ]; then
   echo "the tree was not restored cleanly:"
   git -c core.fsmonitor=false status --porcelain

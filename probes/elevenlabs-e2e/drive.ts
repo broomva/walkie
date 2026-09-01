@@ -11,6 +11,7 @@
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { connect } from "node:net";
+import { CLAUDE_ONLY, type Check, TEXT_OPTIONAL, TEXT_REQUIRED, reconcile, report } from "./score";
 
 const DIR = import.meta.dir;
 const KEY = process.env.ELEVENLABS_API_KEY;
@@ -22,7 +23,7 @@ if (!KEY) {
   process.exit(1);
 }
 
-const results: { name: string; ok: boolean; detail: string }[] = [];
+const results: Check[] = [];
 const check = (name: string, ok: boolean, detail = "") => {
   results.push({ name, ok, detail });
   console.log(`  ${ok ? "PASS" : "FAIL"}  ${name}${detail ? `  — ${detail}` : ""}`);
@@ -84,11 +85,22 @@ const ws = new WebSocket(url, { headers: { "xi-api-key": KEY } } as any);
 const send = (o: unknown) => ws.send(JSON.stringify(o));
 
 const seen: string[] = [];
-let agentSaid = "";
 let firstToolCalled = "";
 let sawAnswerTool = false;
+let spokeAsk = false;
+let finishing = false;
+let finished = false;
 
 const finish = async (code: number) => {
+  // ONCE, and separately from the terminal branch's latch — which is set BEFORE
+  // finish() is called, so reusing it here would return immediately. The socket
+  // `error` handler is a second entry point: finish() polls for up to 40s with
+  // the socket still open (ws.close() is at the end), so an abnormal termination
+  // in that window re-enters and pushes its checks twice. reconcile then reports
+  // DUPLICATE and a run where every leg passed comes out red.
+  if (finished) return;
+  finished = true;
+
   if (EXPECT_CLAUDE) {
     // Give the session a moment to wake and act, then look for its artifact.
     // Resolve from the session registry's own cwd, never from a symlink this
@@ -112,12 +124,16 @@ const finish = async (code: number) => {
     );
   }
   console.log(`\n--- event types seen ---\n  ${[...new Set(seen)].join("\n  ")}`);
-  const bad = results.filter((r) => !r.ok);
-  console.log(`\n${results.length - bad.length}/${results.length} checks passed`);
+  // The declared set depends on configuration, so it is computed rather than
+  // discovered: without WALKIE_EXPECT_CLAUDE the two session-delivery checks
+  // legitimately never run, and requiring them would make every such run red.
+  const required = TEXT_REQUIRED.filter((n) => EXPECT_CLAUDE || !CLAUDE_ONLY.includes(n));
+  const scored = reconcile(results, required, TEXT_OPTIONAL);
+  console.log(report(scored));
   try {
     ws.close();
   } catch {}
-  process.exit(bad.length ? 1 : code);
+  process.exit(scored.ok ? code : 1);
 };
 
 const timer = setTimeout(() => {
@@ -144,11 +160,8 @@ ws.addEventListener("message", async (m: any) => {
   seen.push(ev.type);
 
   if (ev.type === "conversation_initiation_metadata") {
-    check(
-      "conversation started",
-      true,
-      String(ev.conversation_initiation_metadata_event?.conversation_id ?? "").slice(0, 20),
-    );
+    const cid = String(ev.conversation_initiation_metadata_event?.conversation_id ?? "");
+    check("conversation started", cid.length > 0, cid.slice(0, 20));
     // Resume trigger: the client knows this is a resume and primes the turn.
     send({ type: "user_message", text: "what needs me?" });
   }
@@ -203,12 +216,22 @@ ws.addEventListener("message", async (m: any) => {
 
   if (ev.type === "agent_response") {
     const t = ev.agent_response_event?.agent_response ?? "";
-    agentSaid += `${t} `;
-    if (drained && !sawAnswerTool && /seaslug|attach|walkie/i.test(t)) {
-      check("agent spoke the queued ask", true, t.slice(0, 90).replace(/\n/g, " "));
+    if (drained && !sawAnswerTool && !spokeAsk) {
+      spokeAsk = true;
+      check(
+        "agent spoke the queued ask",
+        /seaslug|attach|walkie/i.test(t),
+        t.slice(0, 90).replace(/\n/g, " "),
+      );
       send({ type: "user_message", text: "Go with Genesis sessions only, the safest one." });
     }
-    if (sawAnswerTool) {
+    // ONCE. `finish()` polls for up to 40s and this listener is async, so the
+    // event loop stays free the whole time — a second agent_response would
+    // re-enter, push this check again, and reconcile would call the duplicate
+    // red. Before the declared set that was harmless; now it turns a run where
+    // every leg passed into a failure.
+    if (sawAnswerTool && !finishing) {
+      finishing = true;
       clearTimeout(timer);
       check("agent confirmed after delivering the answer", t.length > 0, t.slice(0, 80));
       await finish(0);

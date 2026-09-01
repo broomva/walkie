@@ -2,7 +2,7 @@
 
 Proves the walkie loop against real vendors, with no public ingress:
 
-```
+```text
 conversation opens
   -> agent's FIRST act is get_pending          (client tool, executed by drive.ts)
   -> agent speaks the queued ask
@@ -11,18 +11,66 @@ conversation opens
   -> the answer is posted into a REAL Claude Code session, which wakes and acts
 ```
 
-`./run.sh` — needs `ELEVENLABS_API_KEY`, `bun`, `tmux`.
+```sh
+./run.sh            # the TEXT probe  — drive.ts
+./run.sh --audio    # the AUDIO probe — drive-audio.ts
+```
+
+Needs `ELEVENLABS_API_KEY`, `bun`, `tmux` (and, for `--audio`, macOS `say` +
+`ffmpeg`). The transport is printed as the first line of the run.
+
+> **The two are not interchangeable, and the record used to treat them as if they
+> were.** `run.sh` had no `--audio` path at all: it always ran `drive.ts`, while
+> the handoff and BRO-2364 cited `./run.sh` as the reproduction for results —
+> "the agent SPEAKS the ask", "10.4s of `pcm_16000`" — that only `drive-audio.ts`
+> can produce. Both probes print a score in the same format, so a text run's
+> score was indistinguishable on the console from the audio result it was being
+> read as. The audio run genuinely happened; the command written down as the way
+> to re-take it did not re-take it.
+>
+> **The audio probe has NOT been re-run since the checks changed.** Its score is
+> now reconciled against a declared set of required checks (`AUDIO_REQUIRED` in
+> `score.ts` is the list) which now includes
+> a barge-in assertion that never existed before (see below). Whether barge-in
+> fires reliably is therefore an open measurement, not a claim — if it does not,
+> that result is the finding, and the assertion stays. Do not cite a number for
+> the audio probe until someone runs it.
 
 Creates a throwaway agent and deletes it on exit. Cost of one run is around
 110 characters of the monthly quota.
+
+## The score is reconciled, not counted
+
+Both drivers used to print `${results.length - bad.length}/${results.length}`
+and exit on `bad.length` alone. `results` holds whatever ran, so the denominator
+floated: a run that skipped a branch printed N/N and exited 0, and a missing
+check was indistinguishable from a passing one.
+
+`score.ts` declares the required set per probe and `reconcile()` treats missing,
+undeclared and duplicated checks as red. `test/probe-checks-declared.test.ts`
+holds each driver to its declared list, so renaming a check in one place turns
+the suite red rather than quietly inverting the gate.
+
+Barge-in is part of that set now. `sawInterruption` had been set and never read
+— the property was reported as proven on the strength of one console line while
+being in none of the ten scored assertions — and it is load-bearing, because
+full duplex was kept and PTT reduced to a gesture partly on the strength of that
+belief. Whether it holds is the open measurement above, not a settled fact.
 
 ## Both polarities
 
 `WALKIE_EXPECT_CLAUDE=0` skips the Claude Code legs. To prove the harness can
 report failure rather than only success, point `.session.json`'s
 `messagingSocketPath` at a path that does not exist: the two Claude legs must go
-FAIL while the five conversation legs still PASS. A run that cannot fail is not
+FAIL while the six conversation legs still PASS. A run that cannot fail is not
 evidence.
+
+That control exercises the socket path only. It does **not** exercise the
+floating-denominator hole, because the error handler pushes a *failing* check —
+the case where a check simply never runs is a different failure. That one is
+covered by `test/probe-score.test.ts`, which reproduces the exact skip and
+asserts both that `reconcile` calls it red and that the superseded formula
+called the same input a clean pass.
 
 ## The audio probe
 
