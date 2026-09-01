@@ -10,6 +10,7 @@
   --muted: #8b98a5;
   --accent: #4a9eff;
   --warn: #ffb454;
+  --good: #3fb950;
 }
 [data-theme="light"] {
   --bg: #f6f8fa;
@@ -19,6 +20,7 @@
   --muted: #57606a;
   --accent: #0969da;
   --warn: #9a6700;
+  --good: #1a7f37;
 }
 
 * {
@@ -123,10 +125,12 @@ body {
 }
 .OptionLine__label {
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 .OptionLine__description {
   color: var(--muted);
   font-size: 0.8125rem;
+  overflow-wrap: anywhere;
 }
 
 .OptionLine__free {
@@ -153,4 +157,146 @@ body {
   color: var(--bg);
   border: 0;
   border-radius: 10px;
+}
+
+/* ---------------------------------------------------------------------------
+   THE READ VIEWS (BRO-2388 slice 3), from `workspaces-dark.png` and
+   `workspace-seaslug-dark.png`: muted section label, rounded card, rows of
+   (dot · name · mono sub-line · chevron).
+
+   EVERY colour here is a token. The design exports are dark-only, so light is
+   authored rather than extracted, and a hard-coded hex is a value that cannot
+   flip — which the theme probe would catch, but only for tokens it happens to
+   sample. Using tokens throughout means it does not have to guess. */
+
+.SectionLabel {
+  margin: 1.5rem 1rem 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.Card {
+  margin: 0 1rem;
+  background: var(--surface);
+  border: 1px solid var(--edge);
+  border-radius: 0.875rem;
+  overflow: hidden;
+}
+
+.Row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  border-top: 1px solid var(--edge);
+}
+.Row:first-child {
+  border-top: none;
+}
+
+.Row__dot {
+  flex: 0 0 auto;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--muted);
+  opacity: 0.5;
+}
+.Row__dot--live {
+  background: var(--accent);
+  opacity: 1;
+}
+
+/* WHICH PROPERTY ACTUALLY HOLDS THIS LAYOUT — measured, not assumed.
+   The first version of this comment credited `min-width: 0`. Mutating the two
+   candidates against the browser probe says otherwise:
+
+     remove `overflow-wrap: anywhere`  ->  every row clipped by the Card
+     remove `min-width: 0`             ->  no change on its own
+
+   (Exact pixel counts are deliberately not recorded here: they are a property
+   of the probe's fixture, not of the CSS, and a number that drifts with a
+   fixture is a claim that goes stale silently.)
+
+   `overflow-wrap: anywhere` is the load-bearing one, and for a reason worth
+   knowing: unlike `break-word` it reduces the element's MIN-CONTENT width, so
+   the flex child can shrink without `min-width: 0` being involved. `min-width: 0`
+   stays as ordinary flex hygiene, not because anything currently depends on it.
+
+   Note the failure mode this guards is CLIPPING, not sideways scroll: `.Card`
+   sets `overflow: hidden`, so a row that cannot shrink is silently truncated and
+   the document never widens. A document-level scrollWidth check cannot see that
+   — which is why the probe measures each row's own scrollWidth instead. */
+.Row__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.Row__name {
+  font-size: 1.0625rem;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.Row__sub {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.Row__chevron {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 1.25rem;
+}
+.Row--good .Row__sub {
+  color: var(--good);
+}
+.Row--warn .Row__sub {
+  color: var(--warn);
+}
+
+/* The monospace detail block: a fixed-width key beside a wrapping value. */
+.KV {
+  display: flex;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--edge);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.875rem;
+}
+.KV:first-child {
+  border-top: none;
+}
+.KV__key {
+  flex: 0 0 5.5rem;
+  color: var(--muted);
+}
+.KV__value {
+  min-width: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.KV__value--good {
+  color: var(--good);
+}
+.KV__value--warn {
+  color: var(--warn);
+}
+
+.Empty {
+  margin: 0.5rem 1rem;
+  color: var(--muted);
+}
+
+.Context {
+  display: block;
+  padding-bottom: 2rem;
+}
+
+.Row__link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
 }

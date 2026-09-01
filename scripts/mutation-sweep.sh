@@ -33,7 +33,7 @@ fi
 # only the two config files while also mutating a test file, which would have
 # left that mutation in the tree.
 SUBJECTS=(tsconfig.json biome.json .github/workflows/ci.yml scripts/assert-gates-succeeded.sh
-          src/main.ts src/api.ts test/api.test.ts
+          src/main.ts src/api.ts src/render.ts src/app.ts test/api.test.ts
           test/control-files.test.ts test/checker-coverage.test.ts test/workflow-gates.test.ts
           test/gates-predicate.test.ts test/no-local-paths.test.ts)
 
@@ -68,7 +68,7 @@ total=0
 # the gates can fail would go green having measured nothing. Unlike the arity
 # check this replaced in ci.yml, these two numbers are independent: `total` is
 # incremented by calls that actually ran, EXPECTED_MUTANTS is a separate literal.
-EXPECTED_MUTANTS=20
+EXPECTED_MUTANTS=35
 
 # mutate <label> <file> <anchor> <replacement> <expected-failing-test-substring>
 mutate() {
@@ -132,6 +132,83 @@ PY
     survivors=$((survivors + 1))
   fi
 }
+
+echo "the guards P20 round 2 found ungated"
+mutate "contextInFlight never resets (the panel renders once, then freezes)" src/app.ts \
+  '      contextInFlight = false;' \
+  '      /* not reset */' \
+  "contextInFlight RESETS"
+mutate "the stale ask list is blanked on an outage" src/app.ts \
+  'renderAsks(root, { ...last, offline: why }, onAnswer);' \
+  'renderAsks(root, { asks: [], offline: why }, onAnswer);' \
+  "stale list is KEPT"
+mutate "the render stops being an atomic swap" src/app.ts \
+  '      const next = document.createDocumentFragment();' \
+  '      host.replaceChildren();
+      const next = host as unknown as DocumentFragment;' \
+  "THROW while rendering leaves the previous context"
+mutate "a fifth view ships without joining the constraints table" src/render.ts \
+  'export function threadsView(' \
+  'export function sessionsView(): HTMLElement {
+  return el("section", "SessionsView", "42%");
+}
+
+export function threadsView(' \
+  "TABLE covers every exported"
+
+echo "the app loop's cost decisions, and the surface-wide constraints (P20 round 1)"
+mutate "the context poll drops to the ask cadence" src/app.ts \
+  'export const CONTEXT_POLL_MS = 60_000;' \
+  'export const CONTEXT_POLL_MS = 4_000;' \
+  "context is armed at CONTEXT_POLL_MS"
+mutate "the context reentrancy guard is removed" src/app.ts \
+  'if (!host || contextInFlight || stopped) return;' \
+  'if (!host || stopped) return;' \
+  "second refresh while one is in flight is DROPPED"
+mutate "checks are fetched for EVERY workspace (the BRO-2418 amplification)" src/app.ts \
+  'id ? fetchChecks(cfg, id).catch(() => null) : Promise.resolve(null),' \
+  'id ? Promise.all(wsResult.workspaces.map((w) => fetchChecks(cfg, w.id).catch(() => null))).then((x) => x[0] ?? null) : Promise.resolve(null),' \
+  "DEFAULT workspace ONLY"
+mutate "a run url is trusted without validating its scheme" src/render.ts \
+  'if (u.protocol === "https:" || u.protocol === "http:") safe = u.href;' \
+  'safe = run.url;' \
+  "javascript: url produces NO LINK"
+mutate "a percentage appears in a view other than threads" src/render.ts \
+  'const bits = [w.id];' \
+  'const bits = [w.id, "42%"];' \
+  "NEVER DRAWS PROGRESS"
+
+echo "the read views — the constraints the design calls non-negotiable (BRO-2388 slice 3)"
+mutate "a workspace renders a path where the API gives an id" src/render.ts \
+  'const bits = [w.id];' \
+  'const bits = [`~/${w.id}`];' \
+  "NO ROOTPATH IS RENDERED"
+
+mutate "an unknown lifecycle stage is coerced to a known one" src/render.ts \
+  'const known = (LIFECYCLE as readonly string[]).includes(t.phase);' \
+  'const known = true;' \
+  "UNKNOWN phase renders verbatim"
+
+mutate "a binary file reports +0 instead of binary" src/render.ts \
+  'file.added === null || file.deleted === null ? "binary"' \
+  'false ? "binary"' \
+  "binary file reports BINARY"
+
+mutate "an in-flight run is toned as a failure" src/render.ts \
+  'run.conclusion === "success" ? "good" : run.conclusion === null ? undefined : "warn";' \
+  'run.conclusion === "success" ? "good" : "warn";' \
+  "RUNNING run (conclusion null) is not rendered as a failure"
+
+mutate "an absent isGitRepo is reported as false" src/render.ts \
+  'if (w.isGitRepo === true) bits.push("git");
+      else if (w.isGitRepo === false) bits.push("no git");' \
+  'bits.push(w.isGitRepo ? "git" : "no git");' \
+  "ABSENT isGitRepo is not reported as false"
+
+mutate "truncation stops being disclosed" src/render.ts \
+  '(status.truncated ? "+ (truncated)" : "")' \
+  '""' \
+  "truncation is disclosed"
 
 echo "the read verbs — the two invariants that are security decisions (BRO-2388)"
 mutate "a read verb points at the OWNER-GATED twin instead of the mirror" src/api.ts \
