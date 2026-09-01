@@ -11,6 +11,7 @@ import {
   fetchThreads,
   fetchWorkspaces,
 } from "./api";
+import { type Orb, createOrb, orbStateFromPhases } from "./orb";
 import { checksView, renderAsks, repoView, threadsView, workspacesView } from "./render";
 
 /** How often the pending list is refreshed.
@@ -42,6 +43,14 @@ export interface AppDeps {
    *  ask loop, which is the product's whole point — context is an addition, and
    *  its absence must not take the loop down with it. */
   readonly contextRoot?: HTMLElement;
+  /** Where the orb mounts. Optional for the same reason `contextRoot` is: it is
+   *  an ornament over state the thread rows already state in words, and an
+   *  ornament must not be able to take the ask loop down. */
+  readonly orbRoot?: HTMLElement;
+  /** An orb to use instead of creating one. Tests only: happy-dom has no WebGL,
+   *  so `createOrb` returns null there and the app→orb wire is unobservable —
+   *  which is exactly how a no-op'd `setState` survived every gate. */
+  readonly orb?: Orb;
   readonly cfg: Config;
   /** Injected so tests drive time rather than wait for it. */
   readonly setTimer?: (fn: () => void, ms: number) => unknown;
@@ -107,6 +116,13 @@ export function createApp(deps: AppDeps) {
    *  status line: the status line reports whether the operator can be reached
    *  about a decision, and a failed `gh` lookup is not that. Reporting it there
    *  would train the operator to ignore the one line that must stay meaningful. */
+  // ONE orb. Created once, told about the world; never re-created per state, and
+  // never a second orb for a second state — that is the design's rule and the
+  // reason there is a single shader. `null` when WebGL is unavailable, which is
+  // a real condition on a locked-down phone and must degrade, not throw.
+  const orb: Orb | null =
+    deps.orb ?? (deps.orbRoot ? createOrb(deps.orbRoot, { size: "md" }) : null);
+
   let contextInFlight = false;
   async function refreshContext(): Promise<void> {
     const host = deps.contextRoot;
@@ -149,6 +165,16 @@ export function createApp(deps: AppDeps) {
       if (gitStatus) next.appendChild(repoView(gitStatus));
       if (checks) next.appendChild(checksView(checks));
       host.replaceChildren(next);
+      // A CONDITION, not a quantity: eight running threads and one running
+      // thread are the same orb.
+      // ONLY FROM A SUCCESSFUL READ. When `/walkie/threads` rejects alone,
+      // `threads` is `[]` — and `orbStateFromPhases([])` is `{working:false,
+      // paused:false}`, i.e. the orb would assert ALL QUIET from a failed read.
+      // That is the same thing the catch below refuses to do with the panel, and
+      // for the same reason: nothing reads as "all quiet".
+      if (threadsSettled.status === "fulfilled") {
+        orb?.setState(orbStateFromPhases(threads.map((t) => t.phase)));
+      }
     } catch {
       // Leave whatever was last rendered. Blanking it would replace real,
       // slightly-stale state with nothing, and nothing reads as "all quiet".
@@ -179,8 +205,10 @@ export function createApp(deps: AppDeps) {
     },
     refresh,
     refreshContext,
+    orb,
     stop: () => {
       stopped = true;
+      orb?.stop();
     },
   };
 }

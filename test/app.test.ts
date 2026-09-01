@@ -8,19 +8,21 @@ import { Window } from "happy-dom";
 import { CONTEXT_POLL_MS, POLL_MS, createApp } from "../src/app";
 
 /** A fake fetch that records every path and answers each verb plausibly. */
-function harness(opts: { failWorkspaces?: boolean } = {}) {
+function harness(opts: { failWorkspaces?: boolean; failThreads?: boolean } = {}) {
   const calls: string[] = [];
+  let phase = "running";
   const real = globalThis.fetch;
   globalThis.fetch = (async (url: string | URL) => {
     const path = new URL(String(url)).pathname;
     calls.push(path);
     if (opts.failWorkspaces && path === "/walkie/workspaces")
       return new Response("{}", { status: 500 });
+    if (opts.failThreads && path === "/walkie/threads") return new Response("{}", { status: 500 });
     const body =
       path === "/walkie/asks"
         ? { asks: [], total: 0 }
         : path === "/walkie/threads"
-          ? { threads: [{ threadId: "t1", phase: "running", createdAt: "x", archived: false }] }
+          ? { threads: [{ threadId: "t1", phase, createdAt: "x", archived: false }] }
           : path === "/walkie/workspaces"
             ? {
                 // TWO of them, deliberately. With one workspace, "fetch for the
@@ -46,6 +48,10 @@ function harness(opts: { failWorkspaces?: boolean } = {}) {
   }) as typeof fetch;
   return {
     calls,
+    /** Change the phase the fixture serves, so a state CHANGE can be observed. */
+    setPhase: (p: string) => {
+      phase = p;
+    },
     restore: () => {
       globalThis.fetch = real;
     },
@@ -57,7 +63,7 @@ function dom() {
   // biome-ignore lint/suspicious/noExplicitAny: installing happy-dom's globals
   (globalThis as any).document = win.document;
   const mk = () => win.document.createElement("div") as unknown as HTMLElement;
-  return { root: mk(), status: mk(), contextRoot: mk() };
+  return { root: mk(), status: mk(), contextRoot: mk(), orbRoot: mk() };
 }
 
 /** Runs one pass of each loop and records the intervals the app armed. */
@@ -330,6 +336,124 @@ describe("the ASK loop's own decisions", () => {
       });
       await Promise.all([app.refresh(), app.refresh(), app.refresh()]);
       expect(h.calls.filter((c) => c === "/walkie/asks").length).toBe(1);
+    } finally {
+      h.restore();
+    }
+  });
+});
+
+describe("the orb: exactly one, and actually wired to the threads", () => {
+  // THE BLOCKER P20 found. Nothing in this repo mentioned the orb outside
+  // `test/orb.test.ts`, so a second `createOrb` AND a no-op'd `setState` both
+  // survived 204 tests, tsc, biome and the real-browser probe. The ticket's one
+  // hard rule ("do not build a second orb for any state") and the component's
+  // entire reason to exist were both unguarded.
+
+  /** A stand-in orb that records what the app tells it. */
+  function fakeOrb() {
+    const states: { working: boolean; paused: boolean }[] = [];
+    return {
+      states,
+      orb: {
+        canvas: {} as HTMLCanvasElement,
+        uniformNames: [],
+        setState: (st: { working: boolean; paused: boolean }) => {
+          states.push(st);
+        },
+        setTheme: () => {},
+        frame: () => {},
+        stop: () => {},
+      },
+    };
+  }
+
+  // NAMED FOR WHAT IT CHECKS. happy-dom has no WebGL, so `createOrb` returns null
+  // and no canvas ever mounts — the count is always 0 and a second orb survives
+  // this. The real single-orb gate is the probe's canvas COUNT in a browser. This
+  // file's own standard: "a test whose name promises something its fixture cannot
+  // deliver is worse than no test."
+  test("no canvas mounts when WebGL is unavailable, however many refreshes run", async () => {
+    const h = harness();
+    try {
+      const d = dom();
+      const app = createApp({
+        ...d,
+        cfg: { baseUrl: "http://x", secret: "s" },
+        setTimer: () => undefined,
+      });
+      await app.refreshContext();
+      await app.refreshContext();
+      await app.refreshContext();
+      // happy-dom has no WebGL so `createOrb` returns null and no canvas mounts;
+      // what must hold either way is that the count never EXCEEDS one — a second
+      // orb, or one per refresh, is what this forbids.
+      expect(d.orbRoot.querySelectorAll("canvas.Orb").length).toBeLessThanOrEqual(1);
+      expect(d.orbRoot.querySelectorAll("canvas").length).toBeLessThanOrEqual(1);
+    } finally {
+      h.restore();
+    }
+  });
+
+  test("THE WIRE EXISTS: thread phases reach the orb", async () => {
+    // Cutting `orb.setState(...)` out of `refreshContext` left every gate green.
+    // This is the assertion that makes the orb's only input path load-bearing.
+    const h = harness();
+    try {
+      const d = dom();
+      const f = fakeOrb();
+      const app = createApp({
+        ...d,
+        cfg: { baseUrl: "http://x", secret: "s" },
+        setTimer: () => undefined,
+        orb: f.orb,
+      } as Parameters<typeof createApp>[0]);
+      await app.refreshContext();
+      expect(f.states.length).toBeGreaterThan(0);
+      // The harness fixture serves one thread with phase "running".
+      expect(f.states.at(-1)).toEqual({ working: true, paused: false });
+    } finally {
+      h.restore();
+    }
+  });
+
+  test("a FAILED threads read does not tell the orb 'all quiet'", async () => {
+    // When /walkie/threads rejects alone, `threads` is `[]` and
+    // `orbStateFromPhases([])` is {working:false, paused:false} — so the orb
+    // would assert ALL QUIET from a failed read. That is what the context catch
+    // refuses to do with the panel, for the same reason: nothing reads as "all
+    // quiet". The existing failure test fails WORKSPACES, so it cannot see this.
+    const h = harness({ failThreads: true });
+    try {
+      const d = dom();
+      const f = fakeOrb();
+      const app = createApp({
+        ...d,
+        cfg: { baseUrl: "http://x", secret: "s" },
+        setTimer: () => undefined,
+        orb: f.orb,
+      } as Parameters<typeof createApp>[0]);
+      await app.refreshContext();
+      expect(f.states).toEqual([]);
+    } finally {
+      h.restore();
+    }
+  });
+
+  test("the orb tracks a CHANGE of state, not just the first read", async () => {
+    const h = harness();
+    try {
+      const d = dom();
+      const f = fakeOrb();
+      const app = createApp({
+        ...d,
+        cfg: { baseUrl: "http://x", secret: "s" },
+        setTimer: () => undefined,
+        orb: f.orb,
+      } as Parameters<typeof createApp>[0]);
+      await app.refreshContext();
+      h.setPhase("awaiting");
+      await app.refreshContext();
+      expect(f.states.at(-1)).toEqual({ working: false, paused: true });
     } finally {
       h.restore();
     }

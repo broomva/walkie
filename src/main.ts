@@ -30,4 +30,18 @@ const secret = localStorage.getItem("walkie.secret") ?? "";
 // ask loop — the product's whole point — and the context views simply do not
 // render. Throwing here would let an addition take down the thing it decorates.
 const contextRoot = document.getElementById("context") ?? undefined;
-createApp({ root, status, contextRoot, cfg: { baseUrl, secret } }).start();
+const orbRoot = document.getElementById("orb") ?? undefined;
+const app = createApp({ root, status, contextRoot, orbRoot, cfg: { baseUrl, secret } });
+// The orb is exposed for the BROWSER PROBE, and only when asked for. Its colours
+// are shader uniforms rather than CSS custom properties, so "the tokens flipped"
+// says nothing about whether the light theme reached the canvas — the only way to
+// know is to render both and compare pixels, and that needs a handle.
+//
+// It is NOT read-only, and an earlier version of this comment claimed it was: the
+// exposed object carries `stop()`, `setState()` and `frame()`, so anything on the
+// page could halt the animation or make the orb lie about the world. Gated behind
+// an explicit query flag so the shipped app exposes nothing.
+if (new URLSearchParams(location.search).has("probe")) {
+  (window as unknown as { __walkieOrb?: unknown }).__walkieOrb = app.orb;
+}
+app.start();

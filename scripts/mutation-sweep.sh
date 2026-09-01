@@ -33,7 +33,7 @@ fi
 # only the two config files while also mutating a test file, which would have
 # left that mutation in the tree.
 SUBJECTS=(tsconfig.json biome.json .github/workflows/ci.yml scripts/assert-gates-succeeded.sh
-          src/main.ts src/api.ts src/render.ts src/app.ts test/api.test.ts
+          src/main.ts src/api.ts src/render.ts src/app.ts src/orb.ts designs/orb.glsl test/api.test.ts
           test/control-files.test.ts test/checker-coverage.test.ts test/workflow-gates.test.ts
           test/gates-predicate.test.ts test/no-local-paths.test.ts)
 
@@ -68,7 +68,7 @@ total=0
 # the gates can fail would go green having measured nothing. Unlike the arity
 # check this replaced in ci.yml, these two numbers are independent: `total` is
 # incremented by calls that actually ran, EXPECTED_MUTANTS is a separate literal.
-EXPECTED_MUTANTS=35
+EXPECTED_MUTANTS=48
 
 # mutate <label> <file> <anchor> <replacement> <expected-failing-test-substring>
 mutate() {
@@ -84,6 +84,11 @@ mutate() {
     return
   fi
 
+  # The `want` string is used with `grep`, so it is a REGEX too. `[0,1]` in a test
+  # name became a character class and matched nothing — the mutant was reported
+  # SURVIVED while the suite was correctly red. Keep `want` free of regex
+  # metacharacters, or the harness lies in the safe-looking direction.
+  #
   # Counted in python, not grep: grep is line-based (so a multi-line anchor can
   # never match) and treats the anchor as a regex (so `[`, `*` and `]` in a JSON
   # snippet blow up or match the wrong thing). Both bugs were live here, and
@@ -132,6 +137,64 @@ PY
     survivors=$((survivors + 1))
   fi
 }
+
+echo "the orb's theme wire, which P20 round 2 found never reached the product"
+mutate "the orb ignores the document's theme at construction" src/orb.ts \
+  '  let theme = ORB_THEMES[opts.theme ?? docTheme()];' \
+  '  let theme = ORB_THEMES.dark;' \
+  "ALREADY in light mode gets a light orb"
+mutate "an explicit theme option stops winning over the document" src/orb.ts \
+  '  let theme = ORB_THEMES[opts.theme ?? docTheme()];' \
+  '  let theme = ORB_THEMES[docTheme()];' \
+  "explicit theme option WINS"
+mutate "u_shade stops being a theme property (the light orb goes formless)" src/orb.ts \
+  '    gl.uniform1f(L.shade, theme.shade);' \
+  '    gl.uniform1f(L.shade, 0);' \
+  "ALREADY in light mode"
+mutate "the orb is driven by a FAILED threads read" src/app.ts \
+  '      if (threadsSettled.status === "fulfilled") {' \
+  '      if (true) {' \
+  "does not tell the orb"
+
+echo "the orb's wiring and range, which P20 round 1 found unguarded"
+mutate "the threads->orb wire is cut (the orb ships inert)" src/app.ts \
+  '      orb?.setState(orbStateFromPhases(threads.map((t) => t.phase)));' \
+  '      /* wire cut */' \
+  "THE WIRE EXISTS"
+mutate "the orb is told a constant instead of the threads" src/app.ts \
+  '      orb?.setState(orbStateFromPhases(threads.map((t) => t.phase)));' \
+  '      orb?.setState({ working: true, paused: false });' \
+  "tracks a CHANGE of state"
+mutate "a shader uniform is renamed and the client silently no-ops" designs/orb.glsl \
+  'uniform float u_work;' \
+  'uniform float u_running;' \
+  "every name createOrb asks for is declared"
+mutate "a backwards frame drives the ease out of range" src/orb.ts \
+  'const dt = last === undefined ? 16 : Math.max(0, Math.min(nowMs - last, 250));' \
+  'const dt = last === undefined ? 16 : Math.min(nowMs - last, 250);' \
+  "when frame() goes backwards"
+
+echo "the orb — one shader, a condition not a quantity, never progress (BRO-2388)"
+mutate "the orb reports a QUANTITY instead of a condition" src/orb.ts \
+  '    working: phases.includes("running"),' \
+  '    working: (phases.filter((p) => p === "running").length / Math.max(phases.length, 1)) as unknown as boolean,' \
+  "same orb"
+mutate "a completion fraction is fed to u_work" src/orb.ts \
+  '    gl.uniform1f(L.work, work);' \
+  '    gl.uniform1f(L.work, 0.42);' \
+  "u_work SETTLES AT 1"
+mutate "the light theme becomes a copy of dark" src/orb.ts \
+  '    sphere: hex("#E8ECF2"),' \
+  '    sphere: hex("#0C101A"),' \
+  "two themes actually differ"
+mutate "a fourth size preset ships unannounced" src/orb.ts \
+  'export const ORB_SIZES = { sm: 40, md: 96, lg: 240 } as const;' \
+  'export const ORB_SIZES = { sm: 40, md: 96, lg: 240, xl: 400 } as const;' \
+  "exactly three size presets"
+mutate "no-WebGL throws instead of degrading" src/orb.ts \
+  '  if (!ctx) return null;' \
+  '  if (!ctx) throw new Error("no webgl");' \
+  "degrades to null"
 
 echo "the guards P20 round 2 found ungated"
 mutate "contextInFlight never resets (the panel renders once, then freezes)" src/app.ts \
