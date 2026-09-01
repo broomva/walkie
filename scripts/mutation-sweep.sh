@@ -426,8 +426,8 @@ mutate "the score's denominator floats again (a skipped check reads as a pass)" 
 # "FAIL" in the same breath — a number contradicting its own verdict.
 mutate "a mixed duplicate counts as passed, so the score contradicts the verdict" \
   probes/elevenlabs-e2e/score.ts \
-  "      .filter((r) => r.ok && known.has(r.name) && !failedNames.has(r.name))" \
-  "      .filter((r) => r.ok && known.has(r.name))" \
+  "    results.filter((r) => r.ok && known.has(r.name) && !failedNames.has(r.name)).map((r) => r.name)," \
+  "    results.filter((r) => r.ok && known.has(r.name)).map((r) => r.name)," \
   "MIXED duplicate does not count as passed"
 
 mutate "reconcile stops reporting a declared check that never ran" \
