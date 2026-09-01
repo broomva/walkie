@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -105,6 +105,23 @@ describe("resolveGenesisDir", () => {
       expect(r.err).toContain("no Genesis checkout found");
       expect(r.err).toContain(ws.genesis);
       expect(r.err).not.toMatch(/^ENOENT/m);
+    } finally {
+      rmSync(ws.base, { recursive: true, force: true });
+    }
+  });
+
+  test("a GENESIS_DIR pointing at a FILE is refused, not returned", () => {
+    // `existsSync` is true for a regular file, so an existence check alone would
+    // hand a file to Bun.spawn as its cwd — reproducing the exact
+    // ENOENT-against-the-executable message this module exists to prevent,
+    // through the check meant to stop it.
+    const ws = fakeWorkspace(true);
+    const file = join(ws.base, "not-a-directory");
+    writeFileSync(file, "");
+    try {
+      const r = runIn(ws.walkie, { GENESIS_DIR: file });
+      expect(r.code).toBe(2);
+      expect(r.err).toContain(file);
     } finally {
       rmSync(ws.base, { recursive: true, force: true });
     }

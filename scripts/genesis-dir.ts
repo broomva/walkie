@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 /**
@@ -28,7 +28,21 @@ import { dirname, join, resolve } from "node:path";
  * `apps/walkie/.worktrees/<name>/scripts/`, any fixed number of `..` is wrong.
  * That is the same reasoning the linear-routing gate uses (BRO-2089) — resolve
  * the repository, do not pattern-match the cwd.
+ *
+ * Candidates must be DIRECTORIES, not merely exist. `existsSync` is true for a
+ * regular file, and a file passed as `cwd` makes the spawn fail with the very
+ * ENOENT-against-the-executable message this module exists to prevent — so
+ * accepting one would reproduce the defect through the check meant to stop it.
  */
+/** Exists AND is a directory. `existsSync` alone accepts a regular file. */
+function isDir(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 export function resolveGenesisDir(): string {
   const attempted: string[] = [];
 
@@ -39,7 +53,7 @@ export function resolveGenesisDir(): string {
   const fromEnv = process.env.GENESIS_DIR?.trim();
   if (fromEnv) {
     const dir = resolve(fromEnv);
-    if (existsSync(dir)) return dir;
+    if (isDir(dir)) return dir;
     fail([`${dir}   (from GENESIS_DIR — set explicitly, so no fallback was tried)`]);
   }
 
@@ -51,13 +65,13 @@ export function resolveGenesisDir(): string {
   if (common.exitCode === 0) {
     const root = dirname(common.stdout.toString().trim());
     const dir = join(dirname(root), "genesis");
-    if (existsSync(dir)) return dir;
+    if (isDir(dir)) return dir;
     attempted.push(`${dir}   (sibling of the walkie checkout)`);
   }
 
   // Last resort, for a checkout with no git (a tarball, a container copy).
   const relative = resolve(import.meta.dir, "../../genesis");
-  if (existsSync(relative)) return relative;
+  if (isDir(relative)) return relative;
   attempted.push(`${relative}   (relative to this script)`);
 
   fail(attempted);
