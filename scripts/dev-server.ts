@@ -16,9 +16,23 @@ const ROOT = join(import.meta.dir, "..");
 const DIST = join(ROOT, "dist");
 const PORT = Number(process.env.PORT ?? 5173);
 
-async function build(): Promise<void> {
-  const p = Bun.spawn(["bun", join(ROOT, "scripts/build-pwa.ts")], { cwd: ROOT, stdout: "pipe" });
-  if ((await p.exited) !== 0) throw new Error("build failed");
+/** SERIALIZED, and non-destructive. Two concurrent requests used to start two
+ *  builds, each of which wiped dist/ first — so one request could be served from
+ *  a directory another had just deleted. Concurrent callers now await the SAME
+ *  build, and `--no-clean` leaves existing files in place while they are
+ *  overwritten. */
+let inFlight: Promise<void> | null = null;
+function build(): Promise<void> {
+  inFlight ??= (async () => {
+    const p = Bun.spawn(["bun", join(ROOT, "scripts/build-pwa.ts"), "--no-clean"], {
+      cwd: ROOT,
+      stdout: "pipe",
+    });
+    if ((await p.exited) !== 0) throw new Error("build failed");
+  })().finally(() => {
+    inFlight = null;
+  });
+  return inFlight;
 }
 
 /** Where Genesis is. Everything under /walkie and /health is proxied there. */
@@ -63,8 +77,11 @@ Bun.serve({
         return new Response(`cannot reach Genesis at ${API}`, { status: 502 });
       }
     }
-    await build(); // never serve a stale bundle
+    // Rebuild for the DOCUMENT only. Sub-resources of a page must be served from
+    // the tree that page was built against, not from one a concurrent rebuild is
+    // partway through writing.
     const path = url.pathname === "/" ? "/index.html" : url.pathname;
+    if (path === "/index.html") await build();
     if (!existsSync(join(DIST, path))) return new Response("not found", { status: 404 });
     return new Response(Bun.file(join(DIST, path)));
   },

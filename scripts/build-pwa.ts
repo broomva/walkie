@@ -10,7 +10,15 @@ import { join } from "node:path";
 const ROOT = join(import.meta.dir, "..");
 const OUT = join(ROOT, "dist");
 
-rmSync(OUT, { recursive: true, force: true });
+// `--no-clean` exists for the dev server, and the reason is a race a real
+// browser found. Wiping the output directory at the start of every build is
+// right for CI (no stale artifact can survive a rename) and wrong for a server
+// that rebuilds per request: the browser asks for index.html and app.js almost
+// together, so the second request deleted dist/ while the first was still being
+// served and app.js 404'd. happy-dom never fetched app.js — it imports the
+// modules directly — so no test here could have seen it.
+const clean = !process.argv.includes("--no-clean");
+if (clean) rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 
 const result = await Bun.build({
