@@ -114,3 +114,165 @@ export async function answerAsk(
     body: JSON.stringify({ threadId: ask.threadId, id: ask.id, answer }),
   });
 }
+
+// ---------------------------------------------------------------------------
+// THE FIVE READ VERBS (BRO-2388 slice 2, unblocked by genesis BRO-2417).
+//
+// These call the /walkie/* MIRRORS, not `/threads` or `/workspaces` directly,
+// and the distinction is the whole point. The owner-gated routes are behind
+// `unauthorized()`, which (a) accepts its credential from the query string and
+// (b) is the OWNER token — the same one that unlocks POST /message and git
+// commit. A phone must not hold that. The mirrors are gated by the walkie
+// secret instead: header-only, and read-only asserted over the server's route
+// table rather than promised in a comment.
+//
+// So the ticket's wording — "drives the read verbs: GET /threads, /workspaces,
+// …" — is satisfied by the mirrors, and calling the routes it literally names
+// would require shipping the owner credential to the browser. That would be the
+// smaller diff and the wrong one.
+
+/** A thread as `/walkie/threads` serves it. Mirrors `ThreadSummary` in genesis
+ *  core (`supervisor.listThreads`). Optional fields really are absent, not
+ *  null — a never-run thread has no engine and no branch. */
+export interface Thread {
+  readonly threadId: string;
+  readonly phase: string;
+  readonly createdAt: string;
+  readonly lastText?: string;
+  readonly title?: string;
+  readonly archived: boolean;
+  readonly engine?: string;
+  /** Optional in genesis's own `ThreadSummary` — `Session.workspaceId` is
+   *  optional, so `JSON.stringify` drops the key for a thread that has none.
+   *  Declaring it required here would hand a consumer the compiler's blessing
+   *  for `thread.workspaceId.slice(...)` on a payload the server may serve. */
+  readonly workspaceId?: string;
+  readonly workspaceName?: string;
+  readonly noWorktree?: boolean;
+  readonly branch?: string;
+}
+
+/** A workspace as the PUBLIC DTO serves it. Note what is NOT here: `rootPath`.
+ *  The server withholds it deliberately and this type records that, so a future
+ *  reader does not go looking for a field the wire will never carry. */
+export interface Workspace {
+  readonly id: string;
+  readonly name: string;
+  /** OPTIONAL in genesis (`Workspace.isGitRepo?`), so `JSON.stringify` drops the
+   *  key and the wire really does omit it — verified against a live server, which
+   *  is how this was caught. Second instance of the same transcription slip as
+   *  `Thread.workspaceId`: a field that is optional upstream must not be widened
+   *  to required downstream, or the compiler blesses a read that crashes. */
+  readonly isGitRepo?: boolean;
+  /** Does the workspace's directory still exist on disk? Computed per request. */
+  readonly available: boolean;
+  /** Would a session here actually get its own worktree if it asked? */
+  readonly worktreeCapable: boolean;
+}
+
+export interface GitFile {
+  readonly path: string;
+  readonly x: string;
+  readonly y: string;
+  readonly untracked: boolean;
+  readonly added: number | null;
+  readonly deleted: number | null;
+  readonly orig?: string;
+}
+
+export interface GitStatus {
+  readonly isGitRepo: boolean;
+  readonly branch?: string;
+  readonly upstream?: string;
+  readonly ahead: number;
+  readonly behind: number;
+  readonly files: readonly GitFile[];
+  readonly truncated: boolean;
+}
+
+export interface GitDiff {
+  readonly path: string;
+  readonly diff: string;
+  readonly truncated: boolean;
+  readonly binary: boolean;
+}
+
+export interface CheckRun {
+  readonly id: number;
+  readonly title: string;
+  readonly workflow: string;
+  readonly status: string;
+  /** null while the run is still going. */
+  readonly conclusion: string | null;
+  readonly url: string;
+  readonly createdAt: string;
+}
+
+export interface ChecksResult {
+  readonly available: boolean;
+  readonly repo?: string;
+  readonly branch?: string;
+  readonly runs: readonly CheckRun[];
+  readonly reason?: string;
+}
+
+/** The one place a workspace id is interpolated into a path.
+ *
+ *  It was three places, and P20 proved that is three places to forget: the
+ *  encoding was covered at `git/status` only, and mutants dropping it from
+ *  `git/diff` and `checks` both SURVIVED. An invariant spelled once per call
+ *  site is forgotten once per call site. */
+const wsPath = (workspaceId: string, suffix: string) =>
+  `/walkie/workspaces/${encodeURIComponent(workspaceId)}${suffix}`;
+
+/** Every thread the server knows, newest first. */
+export async function fetchThreads(cfg: Config): Promise<readonly Thread[]> {
+  const body = (await call(cfg, "/walkie/threads")) as { threads?: readonly Thread[] };
+  return body.threads ?? [];
+}
+
+/** The selectable workspaces, plus which one a new thread binds by default. */
+export async function fetchWorkspaces(
+  cfg: Config,
+): Promise<{ workspaces: readonly Workspace[]; defaultWorkspace: string }> {
+  const body = (await call(cfg, "/walkie/workspaces")) as {
+    workspaces?: readonly Workspace[];
+    defaultWorkspace?: string;
+  };
+  return { workspaces: body.workspaces ?? [], defaultWorkspace: body.defaultWorkspace ?? "" };
+}
+
+export async function fetchGitStatus(cfg: Config, workspaceId: string): Promise<GitStatus> {
+  // `files` is defaulted for the same reason `threads` is: a body without it
+  // (an older server, a proxy, a truncated response) must degrade to "nothing
+  // to show", never to a TypeError that blanks the view. The type promises a
+  // non-optional array, so the client is what makes that promise true.
+  const body = (await call(cfg, wsPath(workspaceId, "/git/status"))) as GitStatus;
+  return { ...body, files: body.files ?? [] };
+}
+
+/** One file's diff.
+ *
+ *  `path` is a REQUIRED positional argument, not an option, because the server
+ *  answers 400 `{"error":"a file path is required"}` without it. Making it
+ *  optional here would move a compile-time error to a runtime one for no gain —
+ *  the call that omits it has no meaning to express. */
+export async function fetchGitDiff(
+  cfg: Config,
+  workspaceId: string,
+  path: string,
+  opts: { cached?: boolean } = {},
+): Promise<GitDiff> {
+  const q = new URLSearchParams({ path });
+  // The server accepts "1" or "true" and nothing else; send the one it lists
+  // first rather than relying on the alternative staying supported.
+  if (opts.cached) q.set("cached", "1");
+  return (await call(cfg, wsPath(workspaceId, `/git/diff?${q.toString()}`))) as GitDiff;
+}
+
+/** CI runs for the workspace's current branch. `available: false` is a normal
+ *  answer (not a repo, gh unauthenticated) and carries a safe `reason`. */
+export async function fetchChecks(cfg: Config, workspaceId: string): Promise<ChecksResult> {
+  const body = (await call(cfg, wsPath(workspaceId, "/checks"))) as ChecksResult;
+  return { ...body, runs: body.runs ?? [] };
+}

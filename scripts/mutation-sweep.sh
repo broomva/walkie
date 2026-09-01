@@ -33,7 +33,7 @@ fi
 # only the two config files while also mutating a test file, which would have
 # left that mutation in the tree.
 SUBJECTS=(tsconfig.json biome.json .github/workflows/ci.yml scripts/assert-gates-succeeded.sh
-          src/main.ts
+          src/main.ts src/api.ts test/api.test.ts
           test/control-files.test.ts test/checker-coverage.test.ts test/workflow-gates.test.ts
           test/gates-predicate.test.ts test/no-local-paths.test.ts)
 
@@ -68,7 +68,7 @@ total=0
 # the gates can fail would go green having measured nothing. Unlike the arity
 # check this replaced in ci.yml, these two numbers are independent: `total` is
 # incremented by calls that actually ran, EXPECTED_MUTANTS is a separate literal.
-EXPECTED_MUTANTS=12
+EXPECTED_MUTANTS=20
 
 # mutate <label> <file> <anchor> <replacement> <expected-failing-test-substring>
 mutate() {
@@ -132,6 +132,55 @@ PY
     survivors=$((survivors + 1))
   fi
 }
+
+echo "the read verbs — the two invariants that are security decisions (BRO-2388)"
+mutate "a read verb points at the OWNER-GATED twin instead of the mirror" src/api.ts \
+  'const body = (await call(cfg, "/walkie/threads")) as { threads?: readonly Thread[] };' \
+  'const body = (await call(cfg, "/threads")) as { threads?: readonly Thread[] };' \
+  "each read hits a /walkie/ path"
+
+mutate "the secret moves from the header into the query string" src/api.ts \
+  'const res = await fetch(`${cfg.baseUrl}${path}`, {
+    ...init,
+    headers: { ...(init?.headers ?? {}), [HEADER]: cfg.secret },' \
+  'const res = await fetch(`${cfg.baseUrl}${path}${path.includes("?") ? "&" : "?"}token=${cfg.secret}`, {
+    ...init,
+    headers: { ...(init?.headers ?? {}) },' \
+  "ever puts the secret in the URL"
+
+mutate "the workspace id stops being URL-encoded (now ONE site, wsPath)" src/api.ts \
+  '`/walkie/workspaces/${encodeURIComponent(workspaceId)}${suffix}`' \
+  '`/walkie/workspaces/${workspaceId}${suffix}`' \
+  "hostile workspace id cannot escape"
+
+mutate "the secret leaks into the query string ENCODED, not raw" src/api.ts \
+  'const res = await fetch(`${cfg.baseUrl}${path}`, {' \
+  'const res = await fetch(`${cfg.baseUrl}${path}${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(cfg.secret)}`, {' \
+  "ever puts the secret in the URL"
+
+mutate "a READS key points at another verb (the list goes quietly partial)" test/api.test.ts \
+  'fetchChecks: () => fetchChecks(cfg, "ws-default"),' \
+  'fetchChecks: () => fetchThreads(cfg),' \
+  "every verb produces a DISTINCT url"
+
+mutate "a network verb ships under a name no fetch-prefix filter would see" src/api.ts \
+  'export async function fetchChecks(' \
+  'export async function getThreadsList(cfg: Config): Promise<unknown> {
+  return await call(cfg, `/threads?token=${cfg.secret}`);
+}
+
+export async function fetchChecks(' \
+  "EVERY callable the module exports"
+
+mutate "GitStatus.files stops defaulting when the body omits it" src/api.ts \
+  'return { ...body, files: body.files ?? [] };' \
+  'return body;' \
+  "absent collection reads as empty"
+
+mutate "an absent collection stops defaulting to empty" src/api.ts \
+  'return body.threads ?? [];' \
+  'return body.threads as readonly Thread[];' \
+  "absent collection reads as empty"
 
 echo "coverage — the checkers must read everything"
 mutate "tsconfig.include narrowed to test/ only" tsconfig.json \

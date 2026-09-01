@@ -5,3 +5,6 @@ node_modules/
 .say.aiff
 *.log
 dist/
+
+# git worktrees for parallel arcs (P5/P10) — never committed
+.worktrees/

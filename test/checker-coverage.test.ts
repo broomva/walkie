@@ -54,22 +54,74 @@ function tracked(extensions: readonly string[]): string[] {
     .sort();
 }
 
+// EXPLICIT TIMEOUTS on every test that spawns a compiler.
+//
+// Measured: `tsc --noEmit --listFiles` takes 0.78s warm on a dev box and >5s on
+// a cold, loaded CI runner — a 6x swing that straddles bun's 5000ms default. The
+// job failed twice on this branch, and the second failure is the one that named
+// the cause, because the instrument guard added alongside it reported
+// `spawn ran:false`: the TEST timed out while `Bun.spawnSync` was still
+// blocking, so `exitCode` was null. The first failure, before the guard, had
+// presented as "the file you just added is outside the program" — an accusation
+// against the newest file rather than a report about the clock.
+//
+// A checker that has to start a compiler is not a 5-second unit test. 60s is far
+// above the observed worst case and still fails a genuine hang.
+const SPAWNS_A_COMPILER = 60_000;
+
 describe("tsc reads every tracked TypeScript file", () => {
-  test("no tracked .ts file is outside the program", () => {
-    const expected = tracked([".ts"]);
-    expect(expected.length).toBeGreaterThan(0); // the walk itself must find something
+  test(
+    "no tracked .ts file is outside the program",
+    () => {
+      const expected = tracked([".ts"]);
+      expect(expected.length).toBeGreaterThan(0); // the walk itself must find something
 
-    const inProgram = new Set(
-      run([`${ROOT}/node_modules/.bin/tsc`, "--noEmit", "--listFiles"])
-        .split("\n")
-        .map((l) => l.trim())
-        .filter((l) => l.startsWith(`${ROOT}/`))
-        .map((l) => l.slice(ROOT.length + 1))
-        .filter((l) => !l.startsWith("node_modules/")),
-    );
+      // THE INSTRUMENT IS CHECKED BEFORE ITS ANSWER IS TRUSTED. A spawn that failed
+      // to launch, or a listing truncated under load, yields an empty or short file
+      // set — which presents as "every tracked file is outside the program", i.e.
+      // as the loudest possible version of the very defect this test hunts. Absence
+      // is the resting state of this measurement, so it must not also be its error
+      // signal.
+      //
+      // Not hypothetical: CI run 33475165397 failed here and an immediate rerun of
+      // the IDENTICAL commit passed. Without this guard the next occurrence reads
+      // as "the file you just added is not covered by tsc", sending the next person
+      // to look at tsconfig for a bug that is not there.
+      const proc = Bun.spawnSync([`${ROOT}/node_modules/.bin/tsc`, "--noEmit", "--listFiles"], {
+        cwd: ROOT,
+      });
+      const listing = proc.stdout.toString();
+      // Three separate ways the instrument can be broken, checked separately
+      // because they fail differently:
+      //   1. the spawn never ran (bad path, missing binary) — exitCode is null;
+      //   2. the process died on a signal rather than exiting;
+      //   3. the output is short. A first-line sentinel catches only TOTAL
+      //      emptiness — `lib.es5.d.ts` is line 1 of ~750, so any truncation after
+      //      it passes the sentinel and then fails the coverage assertion exactly
+      //      as if a file were uncovered. The line floor is what covers truncation.
+      expect(`spawn ran:${proc.exitCode !== null}`).toBe("spawn ran:true");
+      expect(`no signal:${proc.signalCode ?? "none"}`).toBe("no signal:none");
+      expect(listing).toContain("/typescript/lib/lib.es5.d.ts");
+      const lines = listing.split("\n").filter((l) => l.trim().length > 0).length;
+      // tsc reads its own lib/*.d.ts before any project file; ~750 here, and a
+      // real listing cannot plausibly be under 100.
+      expect(`listing lines >= 100:${lines >= 100} (${lines})`).toBe(
+        `listing lines >= 100:true (${lines})`,
+      );
 
-    expect(expected.filter((f) => !inProgram.has(f))).toEqual([]);
-  });
+      const inProgram = new Set(
+        listing
+          .split("\n")
+          .map((l) => l.trim())
+          .filter((l) => l.startsWith(`${ROOT}/`))
+          .map((l) => l.slice(ROOT.length + 1))
+          .filter((l) => !l.startsWith("node_modules/")),
+      );
+
+      expect(expected.filter((f) => !inProgram.has(f))).toEqual([]);
+    },
+    SPAWNS_A_COMPILER,
+  );
 });
 
 describe("biome reads every tracked TypeScript file", () => {
@@ -155,14 +207,22 @@ describe("the checkers still have rules", () => {
     }
   }
 
-  test("biome rejects code violating a rule this repo enables", () => {
-    // `"x" + a + "y"` is lint/style/useTemplate, part of `recommended`.
-    expect(biomeExit('const a = 1;\nconst b = "x" + a + "y";\nconsole.log(b);\n')).not.toBe(0);
-  });
+  test(
+    "biome rejects code violating a rule this repo enables",
+    () => {
+      // `"x" + a + "y"` is lint/style/useTemplate, part of `recommended`.
+      expect(biomeExit('const a = 1;\nconst b = "x" + a + "y";\nconsole.log(b);\n')).not.toBe(0);
+    },
+    SPAWNS_A_COMPILER,
+  );
 
-  test("biome accepts the same code with the violation removed", () => {
-    expect(biomeExit("const a = 1;\nconst b = `x${a}y`;\nconsole.log(b);\n")).toBe(0);
-  });
+  test(
+    "biome accepts the same code with the violation removed",
+    () => {
+      expect(biomeExit("const a = 1;\nconst b = `x${a}y`;\nconsole.log(b);\n")).toBe(0);
+    },
+    SPAWNS_A_COMPILER,
+  );
 
   /**
    * Written outside the repo so it cannot perturb the sets above, but
@@ -193,12 +253,20 @@ describe("the checkers still have rules", () => {
     }
   }
 
-  test("tsc rejects code violating the strictness this repo sets", () => {
-    // Implicit any on a parameter — an error only because `strict` is on.
-    expect(tscExit("export function f(x) {\n  return x;\n}\n")).not.toBe(0);
-  });
+  test(
+    "tsc rejects code violating the strictness this repo sets",
+    () => {
+      // Implicit any on a parameter — an error only because `strict` is on.
+      expect(tscExit("export function f(x) {\n  return x;\n}\n")).not.toBe(0);
+    },
+    SPAWNS_A_COMPILER,
+  );
 
-  test("tsc accepts the same code once the parameter is typed", () => {
-    expect(tscExit("export function f(x: number): number {\n  return x;\n}\n")).toBe(0);
-  });
+  test(
+    "tsc accepts the same code once the parameter is typed",
+    () => {
+      expect(tscExit("export function f(x: number): number {\n  return x;\n}\n")).toBe(0);
+    },
+    SPAWNS_A_COMPILER,
+  );
 });
