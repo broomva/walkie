@@ -71,7 +71,7 @@ total=0
 # the gates can fail would go green having measured nothing. Unlike the arity
 # check this replaced in ci.yml, these two numbers are independent: `total` is
 # incremented by calls that actually ran, EXPECTED_MUTANTS is a separate literal.
-EXPECTED_MUTANTS=54
+EXPECTED_MUTANTS=53
 
 # mutate <label> <file> <anchor> <replacement> <expected-failing-test-substring>
 mutate() {
@@ -277,9 +277,13 @@ mutate "truncation stops being disclosed" src/render.ts \
   "truncation is disclosed"
 
 echo "the read verbs — the two invariants that are security decisions (BRO-2388)"
+# Retargeted: walkie#13 made this call paged, so the literal path became a
+# template and both of this file's api.ts anchors went stale. #11's sweep still
+# passed because its LAST CI run predates that merge — a green check covering an
+# older base, which is the thing this repo has been bitten by before.
 mutate "a read verb points at the OWNER-GATED twin instead of the mirror" src/api.ts \
-  'const body = (await call(cfg, "/walkie/threads")) as { threads?: readonly Thread[] };' \
-  'const body = (await call(cfg, "/threads")) as { threads?: readonly Thread[] };' \
+  '      `/walkie/threads?limit=${THREAD_PAGE}&offset=${page * THREAD_PAGE}`,' \
+  '      `/threads?limit=${THREAD_PAGE}&offset=${page * THREAD_PAGE}`,' \
   "each read hits a /walkie/ path"
 
 mutate "the secret moves from the header into the query string" src/api.ts \
@@ -321,8 +325,8 @@ mutate "GitStatus.files stops defaulting when the body omits it" src/api.ts \
   "absent collection reads as empty"
 
 mutate "an absent collection stops defaulting to empty" src/api.ts \
-  'return body.threads ?? [];' \
-  'return body.threads as readonly Thread[];' \
+  '    const batch = body.threads ?? [];' \
+  '    const batch = body.threads as readonly Thread[];' \
   "absent collection reads as empty"
 
 echo "coverage — the checkers must read everything"
@@ -441,15 +445,10 @@ mutate "the session wait stops sleeping, so its stated budget expires at once" \
   "  :" \
   "AT LEAST its budget"
 
-# The claim is ASSEMBLED, never written literally: test/probe-record-claims.test.ts
-# scans every tracked file for exactly this string, so spelling it out here would
-# make the sweep flag itself and the gate would be unfalsifiable.
-RETRACTED_HEAD="PROVEN"
-mutate "a retracted probe claim comes back as live text" \
-  AGENTS.md \
-  "## The end-to-end probe" \
-  "## The end-to-end probe is ${RETRACTED_HEAD} — 10/10" \
-  "retracted claim appears"
+# The mutant for the retracted probe claim lives with the pieces it needs: it
+# mutates AGENTS.md and is killed by test/probe-record-claims.test.ts, and BOTH
+# stay in #11 because that test polices the AGENTS.md edit. Splitting them apart
+# would leave a mutant here with no kill-test and a gate there with no mutant.
 
 if [ "$total" -ne "$EXPECTED_MUTANTS" ]; then
   echo "$total mutants ran, expected $EXPECTED_MUTANTS — a mutant was added or removed"
