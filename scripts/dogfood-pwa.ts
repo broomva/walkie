@@ -19,8 +19,9 @@ import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Window } from "happy-dom";
+import { resolveGenesisDir } from "./genesis-dir";
 
-const GENESIS = process.env.GENESIS_DIR ?? join(import.meta.dir, "../../../genesis");
+const GENESIS = resolveGenesisDir();
 const SECRET = `dogfood-${process.pid}`;
 let failures = 0;
 const ok = (m: string) => console.log(`  PASS  ${m}`);

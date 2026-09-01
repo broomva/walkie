@@ -30,8 +30,9 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright";
+import { resolveGenesisDir } from "./genesis-dir";
 
-const GENESIS = process.env.GENESIS_DIR ?? join(import.meta.dir, "../../../genesis");
+const GENESIS = resolveGenesisDir();
 const SECRET = `probe-${process.pid}`;
 let failures = 0;
 const ok = (m: string) => console.log(`  PASS  ${m}`);
