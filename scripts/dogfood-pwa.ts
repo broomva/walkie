@@ -48,6 +48,13 @@ const server = Bun.spawn(["bun", "apps/api/src/index.ts"], {
   env: {
     ...process.env,
     PORT: String(port),
+    // GENESIS_TOKEN is REQUIRED alongside the walkie secret since genesis
+    // BRO-2417: `build()` refuses to boot without it, because `unauthorized()`
+    // fails open on an unset token and the walkie secret would then be gating a
+    // server that is already wide open. A cross-repo invariant with no
+    // typechecker spanning the boundary — this script and probe-browser.ts both
+    // broke silently when it landed, and only booting them found it.
+    GENESIS_TOKEN: `owner-${process.pid}`,
     GENESIS_WALKIE_SECRET: SECRET,
     GENESIS_ASK_LOG_DIR: askDir,
     GENESIS_DATA_DIR: join(dir, "data"),

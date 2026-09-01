@@ -19,7 +19,14 @@
 //
 // Usage: GENESIS_DIR=... bun scripts/probe-browser.ts
 
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  appendFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright";
@@ -57,16 +64,53 @@ appendFileSync(
     threadId: "t-ops",
     question: "Deploy walkie to production?",
     header: "Deploy",
-    options: [{ label: "ship", description: "roll it out now" }, { label: "hold" }],
+    // LONG, on purpose. The rows were lengthened for exactly this reason and the
+    // ask surface — which carries arbitrary AGENT-authored text, the least
+    // bounded input in the product — was left with "ship"/"hold", which fit at
+    // any width and made every layout assertion over it vacuous.
+    options: [
+      { label: "ship", description: "roll it out now" },
+      {
+        // UNBROKEN — no hyphens, no spaces. A hyphenated string wraps on its own
+        // and would make this fixture look long while proving nothing; the
+        // property under test is what happens to a token that CANNOT break.
+        label: "holduntilthemigrationwindowclosesandtheoncallconfirmsinwriting",
+        description:
+          "agents write prose not labels: averylongunbrokenidentifierlikeastacktraceframeorapackagenamethatwillnotwrap",
+      },
+    ],
     createdAt: new Date().toISOString(),
   })}\n`,
 );
+
+// A REAL repo in the workspace, with a deliberately long branch and filename.
+// The overflow assertion below is worthless against short values: `main` and
+// `a.ts` fit at any width, so a row that cannot shrink still looks fine. These
+// are the lengths that make `min-width: 0` load-bearing rather than decorative.
+const LONG_BRANCH = "feature/bro-2388-a-branch-name-long-enough-to-threaten-the-layout";
+const LONG_FILE = "src/deeply/nested/directory/with-a-very-long-component-filename.tsx";
+Bun.spawnSync(["git", "init", "-q", dir]);
+Bun.spawnSync(["git", "-C", dir, "config", "user.email", "probe@example.invalid"]);
+Bun.spawnSync(["git", "-C", dir, "config", "user.name", "probe"]);
+mkdirSync(join(dir, "src/deeply/nested/directory"), { recursive: true });
+writeFileSync(join(dir, LONG_FILE), "export const a = 1;\n");
+Bun.spawnSync(["git", "-C", dir, "add", "-A"]);
+Bun.spawnSync(["git", "-C", dir, "commit", "-qm", "seed"]);
+Bun.spawnSync(["git", "-C", dir, "checkout", "-qb", LONG_BRANCH]);
+writeFileSync(join(dir, LONG_FILE), "export const a = 2;\n");
 
 const genesis = Bun.spawn(["bun", "apps/api/src/index.ts"], {
   cwd: GENESIS,
   env: {
     ...process.env,
     PORT: String(gPort),
+    // GENESIS_TOKEN is REQUIRED alongside the walkie secret since genesis
+    // BRO-2417: `build()` refuses to boot without it, because `unauthorized()`
+    // fails open on an unset token and the walkie secret would then be gating a
+    // server that is already wide open. A cross-repo invariant with no
+    // typechecker spanning the boundary — this probe and `dogfood-pwa.ts` both
+    // broke silently when it landed, and only booting them found it.
+    GENESIS_TOKEN: `owner-${process.pid}`,
     GENESIS_WALKIE_SECRET: SECRET,
     GENESIS_ASK_LOG_DIR: askDir,
     GENESIS_DATA_DIR: join(dir, "data"),
@@ -149,6 +193,127 @@ try {
   else bad("body background identical in both themes — tokens declared but unused");
   eq("no horizontal overflow (dark)", false, themes.dark.overflows);
   eq("no horizontal overflow (light)", false, themes.light.overflows);
+
+  // THE READ VIEWS (slice 3), in a real browser, against real Genesis data.
+  await page.waitForSelector(".ThreadsView", { timeout: 20_000 });
+  await page.waitForSelector(".WorkspacesView", { timeout: 20_000 });
+  eq("the repo view rendered", 1, await page.locator(".RepoView").count());
+  eq("the checks view rendered", 1, await page.locator(".ChecksView").count());
+
+  // `data-testid` is written by every view; until now nothing read it, which
+  // made it dead weight that LOOKED like test infrastructure. Locating by it
+  // here is what makes it real — and it is the identity assertion that matters:
+  // a row must be addressable by the server's own id, not by its position.
+  eq(
+    "rows are addressable by the server's id, not by position",
+    true,
+    (await page.locator('[data-testid^="workspace-"]').count()) > 0 &&
+      (await page.locator(`[data-testid="file-${LONG_FILE}"]`).count()) === 1,
+  );
+  eq(
+    "the long branch is shown",
+    true,
+    (await page.locator(".RepoView").textContent())?.includes(LONG_BRANCH) ?? false,
+  );
+  eq(
+    "the long filename is shown",
+    true,
+    (await page.locator(".RepoView").textContent())?.includes(LONG_FILE) ?? false,
+  );
+
+  // THE SECURITY CLAIM, ASSERTED ON THE RENDERED DOM rather than on the type.
+  // The design's workspace screens show an absolute host path; the API withholds
+  // it and this checks the pixels agree. A regex for the SHAPE, not for one
+  // literal — a check for a single known path passes against any other.
+  // SCOPED TO THE SERVER-STRUCTURED VIEWS, not `body`. `Thread.lastText` is the
+  // last agent turn, served verbatim, and an agent turn routinely contains an
+  // absolute path — so a body-wide sweep would false-fail on real data while
+  // proving nothing about the workspace-id substitution it is captioned with.
+  // These three views render only structured fields the server chose to expose.
+  const viewText = (
+    await page.locator(".WorkspacesView, .RepoView, .ChecksView").allTextContents()
+  ).join(" ");
+  if (/\/(Users|home|root|opt|private|var)\//.test(viewText)) {
+    bad("an absolute host path is rendered in a structured view");
+  } else ok("no absolute host path in the workspaces / repo / checks views");
+
+  // NEVER DRAW PROGRESS — the ticket's hard constraint, checked against the live
+  // document rather than against the source that was supposed to produce it.
+  const progressish = await page.evaluate(() => {
+    const el = document.querySelectorAll("progress, meter, [role='progressbar']").length;
+    const pct = /\d+\s*%/.test(document.body.textContent ?? "");
+    return { el, pct };
+  });
+  eq("no progress element in the document", 0, progressish.el);
+  eq("no percentage in the rendered text", false, progressish.pct);
+
+  // OVERFLOW, RE-CHECKED WITH THE CONTEXT PRESENT. The earlier assertion ran
+  // when only the ask card existed, so it could not see these rows at all — and
+  // rows of long unbroken paths are exactly what overflows.
+  const withContext = await page.evaluate(() => {
+    const de = document.documentElement;
+    const read = () => ({
+      overflows: de.scrollWidth > de.clientWidth,
+      scrollWidth: de.scrollWidth,
+      clientWidth: de.clientWidth,
+    });
+    const dark = read();
+    de.dataset.theme = "light";
+    const light = read();
+    de.dataset.theme = "dark";
+    return { dark, light };
+  });
+  // POSITIVE CONTROL ON THE OVERFLOW CHECK ITSELF. Two mutants — removing
+  // `min-width: 0` and removing every `overflow-wrap: anywhere` — both SURVIVED
+  // this assertion, which means it could not fail and was proving nothing.
+  // `.Card { overflow: hidden }` clips a too-wide row instead of widening the
+  // document, so document-level scrollWidth never moves. Plant something the
+  // card cannot clip and confirm the instrument reacts before trusting it.
+  const control = await page.evaluate(() => {
+    const de = document.documentElement;
+    const probe = document.createElement("div");
+    probe.style.cssText = "width:3000px;height:1px";
+    document.body.appendChild(probe);
+    const detected = de.scrollWidth > de.clientWidth;
+    probe.remove();
+    return { detected, clean: de.scrollWidth > de.clientWidth };
+  });
+  eq("positive control: the overflow check CAN fire", true, control.detected);
+  eq("positive control: and it clears again", false, control.clean);
+
+  // CLIPPING, which is the failure this layout can actually have. The card
+  // hides overflow, so a row that cannot shrink is silently truncated rather
+  // than pushing the page sideways — invisible to a document-level check and
+  // invisible to `textContent`, which returns clipped text in full.
+  // SAMPLE THE BOX THAT HIDES, NOT ONLY THE LEAF. `.Card` sets
+  // `overflow: hidden`, so clipping happens at an ANCESTOR. The first version of
+  // this check looked only at `.Row__name/.Row__sub/.KV__value`; P20 showed a
+  // mutant (drop `overflow-wrap` AND `min-width: 0`) that produces a strictly
+  // WORSE layout — content hidden by the Card at 397px in a 356px box — while
+  // every leaf reports `scrollWidth === clientWidth` and the check goes silent.
+  // Same blind spot as the document-level check this replaced, one level up.
+  const clipped = await page.evaluate(() =>
+    [
+      ...document.querySelectorAll(
+        ".Card, .Row, .Row__body, .Row__name, .Row__sub, .KV, .KV__value",
+      ),
+    ]
+      .filter((n) => n.scrollWidth > n.clientWidth + 1)
+      .map((n) => `${n.className}: ${n.scrollWidth}>${n.clientWidth}`),
+  );
+  eq("no row content is clipped by the card", [], clipped);
+
+  eq("no horizontal overflow with context (dark)", false, withContext.dark.overflows);
+  eq("no horizontal overflow with context (light)", false, withContext.light.overflows);
+  // `ok()` is unconditional — it PRINTS. This was a log line shaped like an
+  // assertion, and P20 planted a 120-char unbroken token to make it emit
+  // "PASS document width 888 <= viewport 390" verbatim. In the instrument this
+  // PR added to stop exactly that class, that is not acceptable.
+  eq(
+    `document width <= viewport (${withContext.dark.scrollWidth} vs ${withContext.dark.clientWidth})`,
+    true,
+    withContext.dark.scrollWidth <= withContext.dark.clientWidth,
+  );
 
   // THE LOOP, by tap, in a browser.
   await page.locator('button:has-text("ship")').click();

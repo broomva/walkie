@@ -26,4 +26,8 @@ const baseUrl = params.get("api") ?? localStorage.getItem("walkie.api") ?? locat
 if (params.get("api")) localStorage.setItem("walkie.api", baseUrl);
 
 const secret = localStorage.getItem("walkie.secret") ?? "";
-createApp({ root, status, cfg: { baseUrl, secret } }).start();
+// `contextRoot` is looked up, not required. A shell without it still runs the
+// ask loop — the product's whole point — and the context views simply do not
+// render. Throwing here would let an addition take down the thing it decorates.
+const contextRoot = document.getElementById("context") ?? undefined;
+createApp({ root, status, contextRoot, cfg: { baseUrl, secret } }).start();

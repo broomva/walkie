@@ -8,3 +8,6 @@ dist/
 
 # git worktrees for parallel arcs (P5/P10) — never committed
 .worktrees/
+
+# CI checks genesis out here for the browser probe; never committed.
+.genesis/
