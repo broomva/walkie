@@ -1,9 +1,11 @@
 import SwiftUI
 import WalkieDesign
+import WalkieModel
 
 /// Every screen in this slice, in journey order. Drive previews and a future
 /// screenshot-diff harness from this rather than a hand-kept list.
 public enum WalkieCatalog: String, CaseIterable, Identifiable, Sendable {
+    case home, ask, voiceStage, thread, switcher
     case welcome, scopeExplainer, notifications, microphoneDenied, addWorkspace, ready
     case settings, turnTaking, voice, notificationSettings, appearance, diagnostics
     case workspaces, workspaceDetail, orchestratorScope, history
@@ -13,6 +15,11 @@ public enum WalkieCatalog: String, CaseIterable, Identifiable, Sendable {
     /// Matches the export slug: docs/design/screens/<slug>-dark.png
     public var slug: String {
         switch self {
+        case .home: "home"
+        case .ask: "ask-low-stakes"
+        case .voiceStage: "voice-session-idle"
+        case .thread: "thread-seaslug"
+        case .switcher: "switcher"
         case .welcome: "welcome"
         case .scopeExplainer: "scope-explainer"
         case .notifications: "notifications"
@@ -34,6 +41,35 @@ public enum WalkieCatalog: String, CaseIterable, Identifiable, Sendable {
 
     @MainActor @ViewBuilder public var screen: some View {
         switch self {
+        case .home: HomeScreen(store: .shared)
+        case .ask:
+            AskScreen(
+                store: .shared,
+                ask: ApiAsk(
+                    id: "mock-1",
+                    threadId: "seaslug",
+                    question: "Which sessions should walkie attach to?",
+                    header: "seaslug",
+                    options: [
+                        ApiAskOption(label: "Genesis sessions only", description: "Injection is native. Ships in days. Talks to agents you would have to start differently."),
+                        ApiAskOption(label: "Attach to sessions you already run", description: "Reaches today's work. Rides the documented inbox socket.")
+                    ],
+                    createdAt: "now",
+                    status: "pending"
+                )
+            )
+        case .voiceStage: VoiceScreen(store: .shared)
+        case .thread:
+            ThreadScreen(
+                store: .shared,
+                thread: ApiThread(
+                    threadId: "seaslug",
+                    phase: "running",
+                    title: "Reading the worktree diff",
+                    workspaceName: "seaslug"
+                )
+            )
+        case .switcher: SwitcherSheet(store: .shared)
         case .welcome: WelcomeScreen()
         case .scopeExplainer: ScopeExplainerScreen()
         case .notifications: NotificationsScreen()

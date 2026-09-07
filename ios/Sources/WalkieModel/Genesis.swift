@@ -76,6 +76,7 @@ public enum GenesisEndpoint: Sendable {
     case health, workspaces, workspacesAvailable, workspacesBrowse, workspacesRefresh
     case workspaceFiles(String), workspaceGitStatus(String), workspaceGitDiff(String), workspaceChecks(String)
     case threads, thread(String), message, control
+    case walkieAsks, walkieAnswer, walkieThreads
     /// Live turn events. A WebSocket, not SSE.
     case socket(thread: String)
 
@@ -94,6 +95,9 @@ public enum GenesisEndpoint: Sendable {
         case .thread(let id): "/threads/\(id)"
         case .message: "/message"
         case .control: "/control"
+        case .walkieAsks: "/walkie/asks"
+        case .walkieAnswer: "/walkie/answer"
+        case .walkieThreads: "/walkie/threads"
         case .socket(let thread): "/ws?thread=\(thread)"
         }
     }
@@ -145,3 +149,130 @@ public enum Containment: String, Codable, Sendable {
     case contained, needsAScreen
     public var voiceMayApprove: Bool { self == .contained }
 }
+
+// MARK: - Live API Wire Models
+
+public struct ApiAskOption: Codable, Sendable, Identifiable {
+    public var id: String { label }
+    public let label: String
+    public let description: String?
+
+    public init(label: String, description: String? = nil) {
+        self.label = label
+        self.description = description
+    }
+}
+
+public struct ApiAsk: Codable, Sendable, Identifiable {
+    public let id: String
+    public let sessionId: String?
+    public let threadId: String
+    public let question: String
+    public let header: String?
+    public let options: [ApiAskOption]?
+    public let multiSelect: Bool?
+    public let createdAt: String
+    public let status: String
+
+    public init(id: String, sessionId: String? = nil, threadId: String, question: String, header: String? = nil, options: [ApiAskOption]? = nil, multiSelect: Bool? = nil, createdAt: String, status: String) {
+        self.id = id
+        self.sessionId = sessionId
+        self.threadId = threadId
+        self.question = question
+        self.header = header
+        self.options = options
+        self.multiSelect = multiSelect
+        self.createdAt = createdAt
+        self.status = status
+    }
+}
+
+public struct AsksPage: Codable, Sendable {
+    public let asks: [ApiAsk]
+    public let total: Int
+    public let degraded: String?
+
+    public init(asks: [ApiAsk], total: Int, degraded: String? = nil) {
+        self.asks = asks
+        self.total = total
+        self.degraded = degraded
+    }
+}
+
+public struct AnswerPayload: Codable, Sendable {
+    public let threadId: String
+    public let id: String
+    public let answer: String
+
+    public init(threadId: String, id: String, answer: String) {
+        self.threadId = threadId
+        self.id = id
+        self.answer = answer
+    }
+}
+
+public struct ApiThread: Codable, Sendable, Identifiable {
+    public var id: String { threadId }
+    public let threadId: String
+    public let phase: String
+    public let title: String?
+    public let lastText: String?
+    public let workspaceName: String?
+    public let createdAt: String?
+    public let archived: Bool?
+
+    public init(threadId: String, phase: String, title: String? = nil, lastText: String? = nil, workspaceName: String? = nil, createdAt: String? = nil, archived: Bool? = nil) {
+        self.threadId = threadId
+        self.phase = phase
+        self.title = title
+        self.lastText = lastText
+        self.workspaceName = workspaceName
+        self.createdAt = createdAt
+        self.archived = archived
+    }
+
+    public var runPhase: RunPhase {
+        RunPhase(rawValue: phase) ?? .idle
+    }
+}
+
+public struct ThreadsResponse: Codable, Sendable {
+    public let threads: [ApiThread]
+    public let total: Int?
+    public let hasMore: Bool?
+
+    public init(threads: [ApiThread], total: Int? = nil, hasMore: Bool? = nil) {
+        self.threads = threads
+        self.total = total
+        self.hasMore = hasMore
+    }
+}
+
+public struct WorkspacesResponse: Codable, Sendable {
+    public let workspaces: [Workspace]
+    public let defaultWorkspace: String?
+
+    public init(workspaces: [Workspace], defaultWorkspace: String? = nil) {
+        self.workspaces = workspaces
+        self.defaultWorkspace = defaultWorkspace
+    }
+}
+
+public struct ApiMessageTurn: Codable, Sendable, Identifiable {
+    public var id: String
+    public let role: String
+    public let text: String
+    public let timestamp: String?
+    public let meta: String?
+    public let isMono: Bool?
+
+    public init(id: String = UUID().uuidString, role: String, text: String, timestamp: String? = nil, meta: String? = nil, isMono: Bool? = nil) {
+        self.id = id
+        self.role = role
+        self.text = text
+        self.timestamp = timestamp
+        self.meta = meta
+        self.isMono = isMono
+    }
+}
+
