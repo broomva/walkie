@@ -47,6 +47,9 @@ func endpointPaths() {
     #expect(GenesisEndpoint.control.path == "/control")
     #expect(GenesisEndpoint.socket(thread: "t1").path == "/ws?thread=t1")
     #expect(GenesisEndpoint.workspaceGitDiff("ws1").path == "/workspaces/ws1/git/diff")
+    #expect(GenesisEndpoint.walkieAsks.path == "/walkie/asks")
+    #expect(GenesisEndpoint.walkieAnswer.path == "/walkie/answer")
+    #expect(GenesisEndpoint.walkieThreads.path == "/walkie/threads")
 }
 
 @Test("the dock orb keeps a body and drops the weather in both themes")
@@ -56,4 +59,43 @@ func orbSizeRule() {
     #expect(!WalkieOrbSize.hero.forcesBody)
     #expect(WalkieOrbSize.hero.showsWeather)
     #expect(WalkieOrbSize.hero.radius < WalkieOrbSize.dock.radius)
+}
+
+@Test("AsksPage JSON decodes correctly from Genesis response")
+func asksPageDecoding() throws {
+    let json = """
+    {
+      "asks": [
+        {
+          "id": "ask-123",
+          "threadId": "th-456",
+          "question": "Deploy to staging?",
+          "header": "Confirmation required",
+          "options": [
+            {"label": "Deploy", "description": "Roll out"},
+            {"label": "Hold"}
+          ],
+          "createdAt": "2026-09-07T00:00:00Z",
+          "status": "pending"
+        }
+      ],
+      "total": 1
+    }
+    """
+    let page = try JSONDecoder().decode(AsksPage.self, from: json.data(using: .utf8)!)
+    #expect(page.total == 1)
+    #expect(page.asks.count == 1)
+    #expect(page.asks[0].id == "ask-123")
+    #expect(page.asks[0].options?.count == 2)
+    #expect(page.asks[0].options?[0].label == "Deploy")
+}
+
+@Test("AnswerPayload encodes to expected JSON structure")
+func answerPayloadEncoding() throws {
+    let payload = AnswerPayload(threadId: "th-1", id: "ask-1", answer: "Deploy")
+    let data = try JSONEncoder().encode(payload)
+    let dict = try JSONSerialization.jsonObject(with: data) as? [String: String]
+    #expect(dict?["threadId"] == "th-1")
+    #expect(dict?["id"] == "ask-1")
+    #expect(dict?["answer"] == "Deploy")
 }
