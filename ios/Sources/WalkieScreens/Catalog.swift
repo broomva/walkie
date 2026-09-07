@@ -32,7 +32,7 @@ public enum WalkieCatalog: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    @ViewBuilder public var screen: some View {
+    @MainActor @ViewBuilder public var screen: some View {
         switch self {
         case .welcome: WelcomeScreen()
         case .scopeExplainer: ScopeExplainerScreen()

@@ -19,9 +19,9 @@ public struct WorkspacesScreen: View {
                 DotRow(dot: t.textFaint, title: "maestro", meta: "idle · triage, read only")
             }
             SectionGroup("On the host, not reachable") {
-                DotRow(dot: t.edgeVisible, title: "broomva.tech", meta: "~/broomva/broomva.tech · not added")
+                DotRow(dot: t.edgeVisible, title: "broomva.tech", meta: "~/projects/broomva.tech · not added")
                 RowSeparator()
-                DotRow(dot: t.edgeVisible, title: "chatOS", meta: "~/broomva/apps/chatOS · not added")
+                DotRow(dot: t.edgeVisible, title: "chatOS", meta: "~/projects/chatOS · not added")
             }
             SectionGroup {
                 HStack(spacing: 10) {
@@ -109,7 +109,7 @@ public struct WorkspaceDetailScreen: View {
 
 public extension Workspace {
     static let seaslugSample = Workspace(
-        id: "ws_seaslug", name: "seaslug", rootPath: "~/broomva/apps/seaslug",
+        id: "ws_seaslug", name: "seaslug", rootPath: "~/projects/seaslug",
         isGitRepo: true, noWorktree: false, confined: false, home: nil
     )
 }

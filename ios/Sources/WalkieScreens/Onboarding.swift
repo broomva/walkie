@@ -114,11 +114,11 @@ public struct AddWorkspaceScreen: View {
             ScreenTitle("Make one reachable",
                         "The host can see your sessions. Nothing is reachable by voice until you say which.")
             SectionGroup("Found on the host") {
-                NavRow(icon: "folder", title: "seaslug", meta: "~/broomva/apps/seaslug · claude code · idle", mono: true, chevron: false)
+                NavRow(icon: "folder", title: "seaslug", meta: "~/projects/seaslug · claude code · idle", mono: true, chevron: false)
                 RowSeparator()
-                NavRow(icon: "folder", title: "genesis", meta: "~/broomva/core/genesis · claude code · running", mono: true, chevron: false)
+                NavRow(icon: "folder", title: "genesis", meta: "~/projects/genesis · claude code · running", mono: true, chevron: false)
                 RowSeparator()
-                NavRow(icon: "folder", title: "maestro", meta: "~/broomva/apps/maestro · claude code · idle", mono: true, chevron: false)
+                NavRow(icon: "folder", title: "maestro", meta: "~/projects/maestro · claude code · idle", mono: true, chevron: false)
             }
             SectionGroup("What voice may do with it") {
                 ToggleRow(title: "Triage and read", meta: "Ask what is blocked, read back turns, hear its asks.", on: true)
