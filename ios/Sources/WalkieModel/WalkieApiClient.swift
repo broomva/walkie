@@ -2,6 +2,7 @@ import Foundation
 
 public enum WalkieApiError: LocalizedError, Sendable {
     case unauthorized
+    case insecureEndpoint(String)
     case serverUnreachable(String)
     case httpError(status: Int, message: String)
     case invalidResponse
@@ -10,6 +11,8 @@ public enum WalkieApiError: LocalizedError, Sendable {
         switch self {
         case .unauthorized:
             return "Invalid Walkie secret (unauthorized)"
+        case .insecureEndpoint(let url):
+            return "Insecure endpoint rejected (HTTPS required for non-mesh endpoints): \(url)"
         case .serverUnreachable(let msg):
             return "Cannot reach Genesis: \(msg)"
         case .httpError(let status, let msg):
@@ -31,12 +34,31 @@ public actor WalkieApiClient {
         self.session = session
     }
 
+    public static func isPermittedScheme(url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased() else { return false }
+        if scheme == "https" { return true }
+        if scheme == "http" {
+            guard let host = url.host?.lowercased() else { return false }
+            // Permit unencrypted HTTP only on loopback, local network, or Tailscale mesh IP
+            if host == "localhost" || host == "127.0.0.1" || host.hasSuffix(".local") {
+                return true
+            }
+            if host.hasPrefix("100.") {
+                return true
+            }
+        }
+        return false
+    }
+
     public func updateConfig(baseUrl: URL, secret: String) {
         self.baseUrl = baseUrl
         self.secret = secret
     }
 
-    private func makeRequest(endpoint: GenesisEndpoint, method: String = "GET", body: Data? = nil) -> URLRequest {
+    private func makeRequest(endpoint: GenesisEndpoint, method: String = "GET", body: Data? = nil) throws -> URLRequest {
+        guard Self.isPermittedScheme(url: baseUrl) else {
+            throw WalkieApiError.insecureEndpoint(baseUrl.absoluteString)
+        }
         let url = baseUrl.appendingPathComponent(endpoint.path)
         var req = URLRequest(url: url)
         req.httpMethod = method
@@ -50,7 +72,7 @@ public actor WalkieApiClient {
     }
 
     public func fetchAsks() async throws -> AsksPage {
-        let req = makeRequest(endpoint: .walkieAsks)
+        let req = try makeRequest(endpoint: .walkieAsks)
         let (data, response) = try await session.data(for: req)
         guard let http = response as? HTTPURLResponse else {
             throw WalkieApiError.invalidResponse
@@ -68,7 +90,7 @@ public actor WalkieApiClient {
     public func answerAsk(threadId: String, id: String, answer: String) async throws {
         let payload = AnswerPayload(threadId: threadId, id: id, answer: answer)
         let body = try JSONEncoder().encode(payload)
-        let req = makeRequest(endpoint: .walkieAnswer, method: "POST", body: body)
+        let req = try makeRequest(endpoint: .walkieAnswer, method: "POST", body: body)
         let (data, response) = try await session.data(for: req)
         guard let http = response as? HTTPURLResponse else {
             throw WalkieApiError.invalidResponse
@@ -87,7 +109,9 @@ public actor WalkieApiClient {
     }
 
     public func fetchThreads() async throws -> [ApiThread] {
-        let req = makeRequest(endpoint: .walkieThreads)
+        guard let req = try? makeRequest(endpoint: .walkieThreads) else {
+            return []
+        }
         let (data, response) = try await session.data(for: req)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             return []
@@ -99,7 +123,9 @@ public actor WalkieApiClient {
     }
 
     public func fetchWorkspaces() async throws -> [Workspace] {
-        let req = makeRequest(endpoint: .workspaces)
+        guard let req = try? makeRequest(endpoint: .workspaces) else {
+            return []
+        }
         let (data, response) = try await session.data(for: req)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             return []
@@ -115,7 +141,9 @@ public actor WalkieApiClient {
 
     public func checkHealth() async -> (ok: Bool, latencyMs: Double) {
         let start = CFAbsoluteTimeGetCurrent()
-        let req = makeRequest(endpoint: .health)
+        guard let req = try? makeRequest(endpoint: .health) else {
+            return (false, 0)
+        }
         do {
             let (_, response) = try await session.data(for: req)
             let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000.0

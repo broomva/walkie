@@ -49,6 +49,7 @@ cat << 'PLIST' > "$APP_BUNDLE/Info.plist"
     <dict/>
     <key>NSAppTransportSecurity</key>
     <dict>
+        <!-- Simulator development runner: allows connections to local loopback and private Tailscale mesh (100.x.x.x) -->
         <key>NSAllowsArbitraryLoads</key>
         <true/>
     </dict>
@@ -60,14 +61,15 @@ echo "==> Signing app bundle ad-hoc..."
 codesign --force --deep --sign - "$APP_BUNDLE"
 
 echo "==> Finding Simulator: $DEVICE_NAME..."
-DEVICE_ID="$(xcrun simctl list devices available | grep "$DEVICE_NAME" | head -n 1 | sed -E 's/.*\(([A-F0-9-]+)\).*/\1/')"
+DEVICE_ID="$(xcrun simctl list devices available | grep -F "$DEVICE_NAME (" | head -n 1 | sed -E 's/.*\(([A-F0-9-]+)\).*/\1/' || true)"
 if [ -z "$DEVICE_ID" ]; then
-  echo "Error: Device '$DEVICE_NAME' not found" >&2
+  echo "Error: Device '$DEVICE_NAME' not found in available simulators" >&2
   exit 1
 fi
 
 echo "==> Booting Simulator ($DEVICE_ID)..."
 xcrun simctl boot "$DEVICE_ID" 2>/dev/null || true
+xcrun simctl bootstatus "$DEVICE_ID" -b
 open -a Simulator
 
 echo "==> Installing Walkie.app into $DEVICE_NAME..."

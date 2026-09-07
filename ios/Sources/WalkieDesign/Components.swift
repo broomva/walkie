@@ -291,3 +291,276 @@ public struct StageHint: View {
             .foregroundStyle(t.textFaint).fixedSize(horizontal: false, vertical: true)
     }
 }
+
+// MARK: - AddressBar
+public struct AddressBar: View {
+    @Environment(\.walkie) private var t
+    private let scope: String
+    private let meta: String
+    private let dotColor: Color?
+    private let action: () -> Void
+
+    public init(
+        scope: String = "everything",
+        meta: String = "3 sessions · nothing waiting",
+        dotColor: Color? = nil,
+        action: @escaping () -> Void = {}
+    ) {
+        self.scope = scope
+        self.meta = meta
+        self.dotColor = dotColor
+        self.action = action
+    }
+
+    public var body: some View {
+        Button(action: action) {
+            HStack {
+                HStack(spacing: 8) {
+                    // Chip
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(dotColor ?? t.surface)
+                            .frame(width: 7, height: 7)
+                        Text(scope)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(t.surface)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(t.textPrimary, in: Capsule())
+
+                    // Scope text
+                    Text(meta)
+                        .font(.system(size: 13))
+                        .foregroundStyle(t.textMuted)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                // Switch chevrons
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(t.textMuted)
+            }
+            .padding(.horizontal, WalkieSpace.s5)
+            .padding(.top, 2)
+            .padding(.bottom, 10)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - DockBar
+public struct DockBar: View {
+    @Environment(\.walkie) private var t
+    private let title: String
+    private let subtitle: String
+    private let volume: Double
+    private let onTap: () -> Void
+    private let onHold: (() -> Void)?
+
+    public init(
+        title: String = "Three sessions live",
+        subtitle: String = "Hold anywhere to talk",
+        volume: Double = 0.15,
+        onTap: @escaping () -> Void = {},
+        onHold: (() -> Void)? = nil
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.volume = volume
+        self.onTap = onTap
+        self.onHold = onHold
+    }
+
+    public var body: some View {
+        HStack(spacing: 12) {
+            // Orb
+            OrbView(.dock, diameter: 44, volume: volume)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(t.edgeVisible, lineWidth: 1))
+
+            // Body
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundStyle(t.textPrimary)
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(t.textMuted)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            // Up chevron
+            Image(systemName: "chevron.up")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(t.textSecondary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .frame(height: 64)
+        .background(
+            t.glass
+                .background(.ultraThinMaterial)
+        )
+        .clipShape(Capsule())
+        .overlay(
+            Capsule()
+                .stroke(t.edge, lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.35), radius: 16, x: 0, y: 8)
+        .padding(.horizontal, WalkieSpace.s4)
+        .padding(.bottom, WalkieSpace.s3)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onTap()
+        }
+        .onLongPressGesture(minimumDuration: 0.3) {
+            onHold?() ?? onTap()
+        }
+    }
+}
+
+// MARK: - HaloCard
+public struct HaloCard<Content: View>: View {
+    @Environment(\.walkie) private var t
+    private let label: String?
+    private let isAccented: Bool
+    private let content: Content
+
+    public init(label: String? = nil, isAccented: Bool = false, @ViewBuilder content: () -> Content) {
+        self.label = label
+        self.isAccented = isAccented
+        self.content = content()
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: WalkieSpace.s2) {
+            if let label {
+                Text(label)
+                    .font(WalkieText.label)
+                    .foregroundStyle(t.textMuted)
+                    .padding(.horizontal, WalkieSpace.s4)
+            }
+
+            VStack(spacing: 0) { content }
+                .background(t.surface)
+                .clipShape(RoundedRectangle(cornerRadius: WalkieRadius.group))
+                .overlay(
+                    RoundedRectangle(cornerRadius: WalkieRadius.group)
+                        .stroke(isAccented ? t.tidepool : t.edge, lineWidth: isAccented ? 1.5 : 1)
+                )
+                .shadow(color: isAccented ? t.tidepool.opacity(0.2) : Color.clear, radius: 12, x: 0, y: 0)
+        }
+    }
+}
+
+// MARK: - OptionLine
+public struct OptionLine: View {
+    @Environment(\.walkie) private var t
+    private let title: String
+    private let description: String?
+    private let badge: String?
+    private let isSelected: Bool
+    private let action: () -> Void
+
+    public init(
+        title: String,
+        description: String? = nil,
+        badge: String? = nil,
+        isSelected: Bool = false,
+        action: @escaping () -> Void = {}
+    ) {
+        self.title = title
+        self.description = description
+        self.badge = badge
+        self.isSelected = isSelected
+        self.action = action
+    }
+
+    public var body: some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: 14) {
+                // Radio circle
+                Circle()
+                    .stroke(isSelected ? t.blueText : t.edgeVisible, lineWidth: isSelected ? 5 : 1.5)
+                    .frame(width: 20, height: 20)
+                    .padding(.top, 2)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(title)
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(t.textPrimary)
+
+                        Spacer()
+
+                        if let badge {
+                            Text(badge)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(t.blueText)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(t.blueText.opacity(0.12), in: Capsule())
+                        }
+                    }
+
+                    if let description {
+                        Text(description)
+                            .font(.system(size: 13))
+                            .foregroundStyle(t.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .padding(.horizontal, WalkieSpace.s4)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - ThreadTurnLine
+public struct ThreadTurnLine: View {
+    @Environment(\.walkie) private var t
+    private let role: String
+    private let meta: String?
+    private let text: String
+    private let isMono: Bool
+
+    public init(role: String, meta: String? = nil, text: String, isMono: Bool = false) {
+        self.role = role
+        self.meta = meta
+        self.text = text
+        self.isMono = isMono
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text(role.uppercased())
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(t.textMuted)
+
+                if let meta {
+                    Text("· \(meta)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(t.textFaint)
+                }
+            }
+
+            Text(text)
+                .font(isMono ? WalkieText.monoSmall : .system(size: 15))
+                .foregroundStyle(t.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, WalkieSpace.s4)
+        .padding(.vertical, 10)
+    }
+}

@@ -257,3 +257,22 @@ public struct WorkspacesResponse: Codable, Sendable {
         self.defaultWorkspace = defaultWorkspace
     }
 }
+
+public struct ApiMessageTurn: Codable, Sendable, Identifiable {
+    public var id: String
+    public let role: String
+    public let text: String
+    public let timestamp: String?
+    public let meta: String?
+    public let isMono: Bool?
+
+    public init(id: String = UUID().uuidString, role: String, text: String, timestamp: String? = nil, meta: String? = nil, isMono: Bool? = nil) {
+        self.id = id
+        self.role = role
+        self.text = text
+        self.timestamp = timestamp
+        self.meta = meta
+        self.isMono = isMono
+    }
+}
+

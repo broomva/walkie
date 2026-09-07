@@ -7,7 +7,7 @@ import SwiftUI
 @Test("every catalog entry has a matching export slug")
 func catalogSlugsAreUnique() {
     let slugs = WalkieCatalog.allCases.map(\.slug)
-    #expect(slugs.count == 16)
+    #expect(slugs.count == 21)
     #expect(Set(slugs).count == slugs.count)
 }
 
@@ -99,3 +99,23 @@ func answerPayloadEncoding() throws {
     #expect(dict?["id"] == "ask-1")
     #expect(dict?["answer"] == "Deploy")
 }
+
+@Test("scheme validation requires HTTPS for remote endpoints and allows private mesh HTTP")
+func schemeValidation() {
+    #expect(WalkieApiClient.isPermittedScheme(url: URL(string: "https://api.broomva.tech")!))
+    #expect(WalkieApiClient.isPermittedScheme(url: URL(string: "http://100.82.195.109:8787")!))
+    #expect(WalkieApiClient.isPermittedScheme(url: URL(string: "http://127.0.0.1:8787")!))
+    #expect(WalkieApiClient.isPermittedScheme(url: URL(string: "http://localhost:8787")!))
+    #expect(WalkieApiClient.isPermittedScheme(url: URL(string: "http://genesis.local:8787")!))
+    #expect(!WalkieApiClient.isPermittedScheme(url: URL(string: "http://insecure-remote.example.com")!))
+}
+
+@Test("design components construct cleanly")
+@MainActor
+func componentsSmoke() {
+    _ = AddressBar(scope: "everything", meta: "3 sessions · 1 ask")
+    _ = DockBar(title: "Three sessions live", subtitle: "Hold anywhere to talk")
+    _ = OptionLine(title: "Option A", description: "First choice", badge: "safest", isSelected: true)
+    _ = ThreadTurnLine(role: "you", meta: "spoken", text: "Hello", isMono: false)
+}
+

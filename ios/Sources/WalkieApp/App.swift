@@ -1,5 +1,6 @@
 import SwiftUI
 import WalkieDesign
+import WalkieModel
 import WalkieScreens
 
 @main
@@ -13,11 +14,9 @@ struct WalkieApp: App {
 
     var body: some Scene {
         WindowGroup {
-            #if os(macOS)
-            macOSView
-            #else
-            iOSView
-            #endif
+            rootView
+                .walkiePalette(palette)
+                .preferredColorScheme(isDarkMode ? .dark : .light)
         }
         #if os(macOS)
         .windowStyle(.hiddenTitleBar)
@@ -25,42 +24,78 @@ struct WalkieApp: App {
         #endif
     }
 
-    #if os(macOS)
     @ViewBuilder
-    private var macOSView: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("walkie")
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(palette.textPrimary)
-
-                Spacer()
-
-                Button {
-                    isDarkMode.toggle()
-                } label: {
-                    Image(systemName: isDarkMode ? "sun.max.fill" : "moon.fill")
-                        .foregroundStyle(palette.textSecondary)
-                }
-                .buttonStyle(.plain)
+    private var rootView: some View {
+        HomeScreen(store: store)
+            .sheet(isPresented: $store.isShowingSwitcher) {
+                SwitcherSheet(store: store)
+                    .walkiePalette(palette)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-            .background(palette.surface)
-
-            LiveDockView(store: store)
+            .sheet(isPresented: $store.isShowingVoice) {
+                VoiceScreen(store: store)
+                    .walkiePalette(palette)
+            }
+            .sheet(item: $store.selectedAsk) { ask in
+                AskScreen(store: store, ask: ask)
+                    .walkiePalette(palette)
+            }
+            .sheet(item: $store.selectedThread) { thread in
+                ThreadScreen(store: store, thread: thread)
+                    .walkiePalette(palette)
+            }
+            .sheet(isPresented: $store.isShowingSettings) {
+                NavigationStack {
+                    LiveSettingsView(store: store)
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") { store.isShowingSettings = false }
+                            }
+                        }
+                }
                 .walkiePalette(palette)
-        }
-        .frame(minWidth: 400, minHeight: 700)
+            }
+            .sheet(isPresented: $store.isShowingCatalog) {
+                NavigationStack {
+                    CatalogPickerView()
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Close") { store.isShowingCatalog = false }
+                            }
+                        }
+                }
+                .walkiePalette(palette)
+            }
+            .onAppear {
+                applyLaunchArguments()
+            }
     }
-    #endif
 
-    #if !os(macOS)
-    @ViewBuilder
-    private var iOSView: some View {
-        LiveDockView(store: store)
-            .walkiePalette(palette)
-            .preferredColorScheme(isDarkMode ? .dark : .light)
+    private func applyLaunchArguments() {
+        let args = CommandLine.arguments
+        if args.contains("--screen-voice") {
+            store.isShowingVoice = true
+        } else if args.contains("--screen-switcher") {
+            store.isShowingSwitcher = true
+        } else if args.contains("--screen-ask") {
+            store.selectedAsk = ApiAsk(
+                id: "test-ask",
+                threadId: "seaslug",
+                question: "Which sessions should walkie attach to?",
+                header: "seaslug",
+                options: [
+                    ApiAskOption(label: "Genesis sessions only", description: "Injection is native. Ships in days. Talks to agents you would have to start differently."),
+                    ApiAskOption(label: "Attach to sessions you already run", description: "Reaches today's work. Rides the documented inbox socket.")
+                ],
+                createdAt: "now",
+                status: "pending"
+            )
+        } else if args.contains("--screen-thread") {
+            store.selectedThread = ApiThread(
+                threadId: "seaslug",
+                phase: "running",
+                title: "Reading the worktree diff",
+                workspaceName: "seaslug"
+            )
+        }
     }
-    #endif
 }
