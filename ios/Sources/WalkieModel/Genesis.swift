@@ -276,3 +276,60 @@ public struct ApiMessageTurn: Codable, Sendable, Identifiable {
     }
 }
 
+public struct ApiThreadDetailResponse: Codable, Sendable {
+    public let turns: [ApiThreadTurn]
+
+    public init(turns: [ApiThreadTurn] = []) {
+        self.turns = turns
+    }
+}
+
+public struct ApiThreadTurn: Codable, Sendable, Identifiable {
+    public let id: String
+    public let sessionId: String?
+    public let role: String
+    public let text: String
+    public let createdAt: String?
+    public let durationMs: Int?
+
+    public init(
+        id: String = UUID().uuidString,
+        sessionId: String? = nil,
+        role: String,
+        text: String,
+        createdAt: String? = nil,
+        durationMs: Int? = nil
+    ) {
+        self.id = id
+        self.sessionId = sessionId
+        self.role = role
+        self.text = text
+        self.createdAt = createdAt
+        self.durationMs = durationMs
+    }
+}
+
+public struct ApiMessageResult: Codable, Sendable {
+    public let reply: String
+    public let phase: String
+    public let sessionId: String?
+
+    public init(reply: String, phase: String, sessionId: String? = nil) {
+        self.reply = reply
+        self.phase = phase
+        self.sessionId = sessionId
+    }
+}
+
+public struct ApiControlResult: Codable, Sendable {
+    public let ok: Bool?
+    public let phase: String?
+    public let error: String?
+
+    public init(ok: Bool? = nil, phase: String? = nil, error: String? = nil) {
+        self.ok = ok
+        self.phase = phase
+        self.error = error
+    }
+}
+

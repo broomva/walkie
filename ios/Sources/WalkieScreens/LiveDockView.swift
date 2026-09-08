@@ -350,6 +350,7 @@ public struct LiveSettingsView: View {
     @Environment(\.walkie) private var t
     @State private var serverUrl: String = ""
     @State private var secret: String = ""
+    @State private var token: String = ""
 
     public init(store: WalkieStore) {
         self.store = store
@@ -371,9 +372,16 @@ public struct LiveSettingsView: View {
                     .textInputAutocapitalization(.never)
                     #endif
 
+                SecureField("Session Bearer Token", text: $token)
+                    .autocorrectionDisabled()
+                    #if !os(macOS)
+                    .textInputAutocapitalization(.never)
+                    #endif
+
                 Button {
                     store.serverUrlString = serverUrl
                     store.secret = secret
+                    store.token = token
                     Task {
                         await store.testConnection()
                     }
@@ -412,6 +420,7 @@ public struct LiveSettingsView: View {
         .onAppear {
             serverUrl = store.serverUrlString
             secret = store.secret
+            token = store.token
         }
     }
 }

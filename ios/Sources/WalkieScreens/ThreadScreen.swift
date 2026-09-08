@@ -10,6 +10,8 @@ public struct ThreadScreen: View {
     let thread: ApiThread
     @State private var messageInput: String = ""
     @State private var turns: [ApiMessageTurn] = []
+    @State private var isSending: Bool = false
+    @State private var isShowingActions: Bool = false
 
     public init(store: WalkieStore, thread: ApiThread) {
         self.store = store
@@ -39,26 +41,70 @@ public struct ThreadScreen: View {
             navHeader
 
             // 3. Turns Conversation Scroll
-            ScrollView {
-                VStack(alignment: .leading, spacing: WalkieSpace.s3) {
-                    ForEach(turns) { turn in
-                        ThreadTurnLine(
-                            role: turn.role,
-                            meta: turn.meta,
-                            text: turn.text,
-                            isMono: turn.isMono ?? false
-                        )
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: WalkieSpace.s3) {
+                        ForEach(turns) { turn in
+                            ThreadTurnLine(
+                                role: turn.role,
+                                meta: turn.meta,
+                                text: turn.text,
+                                isMono: turn.isMono ?? false
+                            )
+                            .id(turn.id)
+                        }
+
+                        if isSending {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                    .tint(t.textMuted)
+                                    .scaleEffect(0.8)
+                                Text("agent working…")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(t.textMuted)
+                            }
+                            .padding(.top, 4)
+                        }
+
+                        Spacer().frame(height: 80)
                     }
-                    Spacer().frame(height: 80)
+                    .padding(.horizontal, WalkieSpace.s4)
+                    .padding(.top, WalkieSpace.s2)
                 }
-                .padding(.horizontal, WalkieSpace.s4)
-                .padding(.top, WalkieSpace.s2)
+                .onChange(of: turns.count) { _, _ in
+                    if let last = turns.last {
+                        withAnimation {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
+                    }
+                }
             }
 
             // 4. Message Input Dock Bar
             inputDock
         }
         .background(t.bg.ignoresSafeArea())
+        .task {
+            await loadTurns()
+        }
+        .confirmationDialog("Session Actions", isPresented: $isShowingActions, titleVisibility: .visible) {
+            Button("Interrupt Run", role: .destructive) {
+                Task {
+                    try? await store.interrupt(threadId: thread.threadId)
+                    await loadTurns()
+                }
+            }
+            Button("Reset Context") {
+                Task {
+                    try? await store.resetThread(threadId: thread.threadId)
+                    await loadTurns()
+                }
+            }
+            Button("Settings") {
+                store.isShowingSettings = true
+            }
+            Button("Cancel", role: .cancel) {}
+        }
     }
 
     private var navHeader: some View {
@@ -89,7 +135,7 @@ public struct ThreadScreen: View {
             Spacer()
 
             Button {
-                store.isShowingSettings = true
+                isShowingActions = true
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 15, weight: .bold))
@@ -118,7 +164,7 @@ public struct ThreadScreen: View {
             Button {
                 store.isShowingVoice = true
             } label: {
-                OrbView(.dock, diameter: 36, volume: store.isWorking ? 0.8 : 0.2)
+                OrbView(.dock, diameter: 36, volume: (store.isWorking || isSending) ? 0.8 : 0.2)
                     .clipShape(Circle())
                     .overlay(Circle().stroke(t.edgeVisible, lineWidth: 1))
             }
@@ -129,10 +175,36 @@ public struct ThreadScreen: View {
         .background(t.bg)
     }
 
+    private func loadTurns() async {
+        let serverTurns = await store.fetchTurns(for: thread.threadId)
+        if !serverTurns.isEmpty {
+            self.turns = serverTurns
+        }
+    }
+
     private func sendMessage() {
-        guard !messageInput.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        let text = messageInput
+        let trimmed = messageInput.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, !isSending else { return }
         messageInput = ""
-        turns.append(ApiMessageTurn(role: "you", text: text, timestamp: "just now"))
+        isSending = true
+        turns.append(ApiMessageTurn(role: "you", text: trimmed, timestamp: "just now"))
+
+        Task {
+            defer { isSending = false }
+            do {
+                let result = try await store.sendTurn(threadId: thread.threadId, text: trimmed)
+                turns.append(ApiMessageTurn(
+                    role: thread.workspaceName ?? "agent",
+                    text: result.reply,
+                    timestamp: "just now"
+                ))
+            } catch {
+                turns.append(ApiMessageTurn(
+                    role: "system",
+                    text: "Turn error: \(error.localizedDescription)",
+                    timestamp: "just now"
+                ))
+            }
+        }
     }
 }

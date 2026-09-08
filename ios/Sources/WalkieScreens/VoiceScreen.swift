@@ -82,6 +82,11 @@ public struct VoiceScreen: View {
                     PillButton("Interrupt", primary: false) {
                         isTalking = false
                         volume = 0.15
+                        if let threadId = store.selectedThread?.threadId ?? store.filteredThreads.first?.threadId {
+                            Task {
+                                try? await store.interrupt(threadId: threadId)
+                            }
+                        }
                     }
                 }
                 .padding(.top, 8)

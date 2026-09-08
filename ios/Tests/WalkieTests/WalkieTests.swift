@@ -119,3 +119,67 @@ func componentsSmoke() {
     _ = ThreadTurnLine(role: "you", meta: "spoken", text: "Hello", isMono: false)
 }
 
+@Test("ApiThreadDetailResponse decodes turn history from Genesis")
+func threadDetailResponseDecoding() throws {
+    let json = """
+    {
+      "turns": [
+        {
+          "id": "turn-1",
+          "sessionId": "s-123",
+          "role": "user",
+          "text": "Check system status",
+          "createdAt": "2026-09-07T01:00:00Z",
+          "durationMs": 120
+        },
+        {
+          "id": "turn-2",
+          "sessionId": "s-123",
+          "role": "agent",
+          "text": "All systems nominal.",
+          "createdAt": "2026-09-07T01:00:02Z",
+          "durationMs": 1850
+        }
+      ]
+    }
+    """
+    let detail = try JSONDecoder().decode(ApiThreadDetailResponse.self, from: json.data(using: .utf8)!)
+    #expect(detail.turns.count == 2)
+    #expect(detail.turns[0].role == "user")
+    #expect(detail.turns[0].durationMs == 120)
+    #expect(detail.turns[1].role == "agent")
+    #expect(detail.turns[1].durationMs == 1850)
+}
+
+@Test("ApiMessageResult and ApiControlResult decode cleanly")
+func messageAndControlResultDecoding() throws {
+    let msgJson = """
+    {
+      "reply": "Orchestrating workflow...",
+      "phase": "running",
+      "sessionId": "sess-abc"
+    }
+    """
+    let msgResult = try JSONDecoder().decode(ApiMessageResult.self, from: msgJson.data(using: .utf8)!)
+    #expect(msgResult.reply == "Orchestrating workflow...")
+    #expect(msgResult.phase == "running")
+    #expect(msgResult.sessionId == "sess-abc")
+
+    let ctrlJson = """
+    {
+      "ok": true,
+      "phase": "interrupted"
+    }
+    """
+    let ctrlResult = try JSONDecoder().decode(ApiControlResult.self, from: ctrlJson.data(using: .utf8)!)
+    #expect(ctrlResult.ok == true)
+    #expect(ctrlResult.phase == "interrupted")
+}
+
+@Test("ControlAction matches Genesis protocol endpoints")
+func controlActionMapping() {
+    #expect(ControlAction.interrupt.rawValue == "interrupt")
+    #expect(ControlAction.reset.rawValue == "reset")
+}
+
+

@@ -26,11 +26,13 @@ public enum WalkieApiError: LocalizedError, Sendable {
 public actor WalkieApiClient {
     public var baseUrl: URL
     public var secret: String
+    public var bearerToken: String?
     private let session: URLSession
 
-    public init(baseUrl: URL, secret: String, session: URLSession = .shared) {
+    public init(baseUrl: URL, secret: String, bearerToken: String? = nil, session: URLSession = .shared) {
         self.baseUrl = baseUrl
         self.secret = secret
+        self.bearerToken = bearerToken
         self.session = session
     }
 
@@ -50,9 +52,10 @@ public actor WalkieApiClient {
         return false
     }
 
-    public func updateConfig(baseUrl: URL, secret: String) {
+    public func updateConfig(baseUrl: URL, secret: String, bearerToken: String? = nil) {
         self.baseUrl = baseUrl
         self.secret = secret
+        self.bearerToken = bearerToken
     }
 
     private func makeRequest(endpoint: GenesisEndpoint, method: String = "GET", body: Data? = nil) throws -> URLRequest {
@@ -63,6 +66,9 @@ public actor WalkieApiClient {
         var req = URLRequest(url: url)
         req.httpMethod = method
         req.setValue(secret, forHTTPHeaderField: "x-genesis-walkie-secret")
+        if let bearerToken, !bearerToken.isEmpty {
+            req.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
+        }
         if let body {
             req.httpBody = body
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -155,5 +161,63 @@ public actor WalkieApiClient {
             let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
             return (false, elapsed)
         }
+    }
+
+    public func fetchThreadTurns(threadId: String) async throws -> [ApiThreadTurn] {
+        guard let req = try? makeRequest(endpoint: .thread(threadId)) else {
+            return []
+        }
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            return []
+        }
+        if let decoded = try? JSONDecoder().decode(ApiThreadDetailResponse.self, from: data) {
+            return decoded.turns
+        }
+        return []
+    }
+
+    public func sendMessage(threadId: String, text: String) async throws -> ApiMessageResult {
+        struct MessagePayload: Codable {
+            let threadId: String
+            let text: String
+        }
+        let payload = MessagePayload(threadId: threadId, text: text)
+        let body = try JSONEncoder().encode(payload)
+        let req = try makeRequest(endpoint: .message, method: "POST", body: body)
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse else {
+            throw WalkieApiError.invalidResponse
+        }
+        if http.statusCode == 401 || http.statusCode == 403 {
+            throw WalkieApiError.unauthorized
+        }
+        guard http.statusCode >= 200 && http.statusCode < 300 else {
+            let msg = String(data: data, encoding: .utf8) ?? "status \(http.statusCode)"
+            throw WalkieApiError.httpError(status: http.statusCode, message: msg)
+        }
+        return try JSONDecoder().decode(ApiMessageResult.self, from: data)
+    }
+
+    public func controlThread(threadId: String, action: ControlAction) async throws -> ApiControlResult {
+        struct ControlPayload: Codable {
+            let threadId: String
+            let action: String
+        }
+        let payload = ControlPayload(threadId: threadId, action: action.rawValue)
+        let body = try JSONEncoder().encode(payload)
+        let req = try makeRequest(endpoint: .control, method: "POST", body: body)
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse else {
+            throw WalkieApiError.invalidResponse
+        }
+        if http.statusCode == 401 || http.statusCode == 403 {
+            throw WalkieApiError.unauthorized
+        }
+        guard http.statusCode >= 200 && http.statusCode < 300 else {
+            let msg = String(data: data, encoding: .utf8) ?? "status \(http.statusCode)"
+            throw WalkieApiError.httpError(status: http.statusCode, message: msg)
+        }
+        return (try? JSONDecoder().decode(ApiControlResult.self, from: data)) ?? ApiControlResult(ok: true)
     }
 }
