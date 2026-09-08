@@ -11,21 +11,27 @@ public enum StatusKind: Sendable {
 
 private enum KeychainHelper {
     static let service = "tech.broomva.walkie"
-    static let account = "walkie.secret"
+    static let secretAccount = "walkie.secret"
+    static let tokenAccount = "walkie.token"
 
-    static func save(secret: String) {
-        guard let data = secret.data(using: .utf8) else { return }
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecValueData as String: data
-        ]
-        SecItemDelete(query as CFDictionary)
-        SecItemAdd(query as CFDictionary, nil)
+    static func save(account: String, value: String) {
+        if let data = value.data(using: .utf8) {
+            let deleteQuery: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: service,
+                kSecAttrAccount as String: account
+            ]
+            SecItemDelete(deleteQuery as CFDictionary)
+
+            var addQuery = deleteQuery
+            addQuery[kSecValueData as String] = data
+            addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+            SecItemAdd(addQuery as CFDictionary, nil)
+        }
+        UserDefaults.standard.set(value, forKey: account)
     }
 
-    static func load() -> String? {
+    static func load(account: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -35,8 +41,13 @@ private enum KeychainHelper {
         ]
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess, let data = item as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        if status == errSecSuccess, let data = item as? Data, let str = String(data: data, encoding: .utf8), !str.isEmpty {
+            return str
+        }
+        if let fallback = UserDefaults.standard.string(forKey: account), !fallback.isEmpty {
+            return fallback
+        }
+        return nil
     }
 }
 
@@ -55,7 +66,14 @@ public final class WalkieStore {
 
     public var secret: String {
         didSet {
-            KeychainHelper.save(secret: secret)
+            KeychainHelper.save(account: KeychainHelper.secretAccount, value: secret)
+            resetClient()
+        }
+    }
+
+    public var token: String {
+        didSet {
+            KeychainHelper.save(account: KeychainHelper.tokenAccount, value: token)
             resetClient()
         }
     }
@@ -105,24 +123,51 @@ public final class WalkieStore {
 
     public init(
         defaultUrl: String = "http://100.82.195.109:8787",
-        defaultSecret: String = "1d4960b754036d4dab30d81972e17ddf53bbf45f8cac002d"
+        defaultSecret: String = ProcessInfo.processInfo.environment["GENESIS_WALKIE_SECRET"] ?? "",
+        defaultToken: String = ProcessInfo.processInfo.environment["GENESIS_TOKEN"] ?? ""
     ) {
-        let storedUrl = UserDefaults.standard.string(forKey: "walkie.serverUrl") ?? defaultUrl
+        let args = CommandLine.arguments
+        let argUrl: String? = {
+            if let idx = args.firstIndex(of: "--url"), idx + 1 < args.count { return args[idx + 1] }
+            return nil
+        }()
+        let argSecret: String? = {
+            if let idx = args.firstIndex(of: "--secret"), idx + 1 < args.count { return args[idx + 1] }
+            return nil
+        }()
+        let argToken: String? = {
+            if let idx = args.firstIndex(of: "--token"), idx + 1 < args.count { return args[idx + 1] }
+            return nil
+        }()
+
+        let storedUrl = argUrl ?? UserDefaults.standard.string(forKey: "walkie.serverUrl") ?? defaultUrl
 
         let loadedSecret: String
-        if let legacySecret = UserDefaults.standard.string(forKey: "walkie.secret") {
-            KeychainHelper.save(secret: legacySecret)
+        if let argSecret {
+            KeychainHelper.save(account: KeychainHelper.secretAccount, value: argSecret)
+            loadedSecret = argSecret
+        } else if let legacySecret = UserDefaults.standard.string(forKey: "walkie.secret") {
+            KeychainHelper.save(account: KeychainHelper.secretAccount, value: legacySecret)
             UserDefaults.standard.removeObject(forKey: "walkie.secret")
             loadedSecret = legacySecret
         } else {
-            loadedSecret = KeychainHelper.load() ?? defaultSecret
+            loadedSecret = KeychainHelper.load(account: KeychainHelper.secretAccount) ?? defaultSecret
+        }
+
+        let loadedToken: String
+        if let argToken {
+            KeychainHelper.save(account: KeychainHelper.tokenAccount, value: argToken)
+            loadedToken = argToken
+        } else {
+            loadedToken = KeychainHelper.load(account: KeychainHelper.tokenAccount) ?? defaultToken
         }
 
         self.serverUrlString = storedUrl
         self.secret = loadedSecret
+        self.token = loadedToken
 
         let url = URL(string: storedUrl) ?? URL(string: defaultUrl)!
-        self.client = WalkieApiClient(baseUrl: url, secret: loadedSecret)
+        self.client = WalkieApiClient(baseUrl: url, secret: loadedSecret, bearerToken: loadedToken)
     }
 
     private func resetClient() {
@@ -131,7 +176,7 @@ public final class WalkieStore {
         stopPolling()
         guard let url = URL(string: serverUrlString) else { return }
         Task {
-            await client.updateConfig(baseUrl: url, secret: secret)
+            await client.updateConfig(baseUrl: url, secret: secret, bearerToken: token)
             guard self.configGeneration == gen else { return }
             await refreshAll()
             startPolling()
@@ -264,5 +309,45 @@ public final class WalkieStore {
             self.statusKind = .error
             self.isOffline = true
         }
+    }
+
+    public func fetchTurns(for threadId: String) async -> [ApiMessageTurn] {
+        do {
+            let apiTurns = try await client.fetchThreadTurns(threadId: threadId)
+            return apiTurns.map { turn in
+                let metaStr: String?
+                if let durationMs = turn.durationMs, durationMs > 0 {
+                    metaStr = String(format: "%.1fs", Double(durationMs) / 1000.0)
+                } else {
+                    metaStr = nil
+                }
+                return ApiMessageTurn(
+                    id: turn.id,
+                    role: turn.role,
+                    text: turn.text,
+                    timestamp: turn.createdAt,
+                    meta: metaStr,
+                    isMono: turn.role == "tool" || turn.role == "branch"
+                )
+            }
+        } catch {
+            return []
+        }
+    }
+
+    public func sendTurn(threadId: String, text: String) async throws -> ApiMessageResult {
+        let result = try await client.sendMessage(threadId: threadId, text: text)
+        await refreshContext()
+        return result
+    }
+
+    public func interrupt(threadId: String) async throws {
+        _ = try await client.controlThread(threadId: threadId, action: .interrupt)
+        await refreshContext()
+    }
+
+    public func resetThread(threadId: String) async throws {
+        _ = try await client.controlThread(threadId: threadId, action: .reset)
+        await refreshContext()
     }
 }

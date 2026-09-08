@@ -90,11 +90,17 @@ struct WalkieApp: App {
                 status: "pending"
             )
         } else if args.contains("--screen-thread") {
+            let targetThreadId: String
+            if let idx = args.firstIndex(of: "--thread-id"), idx + 1 < args.count {
+                targetThreadId = args[idx + 1]
+            } else {
+                targetThreadId = "test-swift-session"
+            }
             store.selectedThread = ApiThread(
-                threadId: "seaslug",
+                threadId: targetThreadId,
                 phase: "running",
-                title: "Reading the worktree diff",
-                workspaceName: "seaslug"
+                title: targetThreadId,
+                workspaceName: targetThreadId
             )
         }
     }
