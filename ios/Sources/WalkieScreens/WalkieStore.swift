@@ -15,15 +15,20 @@ private enum KeychainHelper {
     static let tokenAccount = "walkie.token"
 
     static func save(account: String, value: String) {
-        guard let data = value.data(using: .utf8) else { return }
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecValueData as String: data
-        ]
-        SecItemDelete(query as CFDictionary)
-        SecItemAdd(query as CFDictionary, nil)
+        if let data = value.data(using: .utf8) {
+            let deleteQuery: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: service,
+                kSecAttrAccount as String: account
+            ]
+            SecItemDelete(deleteQuery as CFDictionary)
+
+            var addQuery = deleteQuery
+            addQuery[kSecValueData as String] = data
+            addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+            SecItemAdd(addQuery as CFDictionary, nil)
+        }
+        UserDefaults.standard.set(value, forKey: account)
     }
 
     static func load(account: String) -> String? {
@@ -36,8 +41,13 @@ private enum KeychainHelper {
         ]
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess, let data = item as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        if status == errSecSuccess, let data = item as? Data, let str = String(data: data, encoding: .utf8), !str.isEmpty {
+            return str
+        }
+        if let fallback = UserDefaults.standard.string(forKey: account), !fallback.isEmpty {
+            return fallback
+        }
+        return nil
     }
 }
 
@@ -113,13 +123,30 @@ public final class WalkieStore {
 
     public init(
         defaultUrl: String = "http://100.82.195.109:8787",
-        defaultSecret: String = "1d4960b754036d4dab30d81972e17ddf53bbf45f8cac002d",
-        defaultToken: String = "8db0e01c5e953f1dcdd0fb3472f8780ebb9bb83afa93bc23973a348b0a42b02e"
+        defaultSecret: String = ProcessInfo.processInfo.environment["GENESIS_WALKIE_SECRET"] ?? "",
+        defaultToken: String = ProcessInfo.processInfo.environment["GENESIS_TOKEN"] ?? ""
     ) {
-        let storedUrl = UserDefaults.standard.string(forKey: "walkie.serverUrl") ?? defaultUrl
+        let args = CommandLine.arguments
+        let argUrl: String? = {
+            if let idx = args.firstIndex(of: "--url"), idx + 1 < args.count { return args[idx + 1] }
+            return nil
+        }()
+        let argSecret: String? = {
+            if let idx = args.firstIndex(of: "--secret"), idx + 1 < args.count { return args[idx + 1] }
+            return nil
+        }()
+        let argToken: String? = {
+            if let idx = args.firstIndex(of: "--token"), idx + 1 < args.count { return args[idx + 1] }
+            return nil
+        }()
+
+        let storedUrl = argUrl ?? UserDefaults.standard.string(forKey: "walkie.serverUrl") ?? defaultUrl
 
         let loadedSecret: String
-        if let legacySecret = UserDefaults.standard.string(forKey: "walkie.secret") {
+        if let argSecret {
+            KeychainHelper.save(account: KeychainHelper.secretAccount, value: argSecret)
+            loadedSecret = argSecret
+        } else if let legacySecret = UserDefaults.standard.string(forKey: "walkie.secret") {
             KeychainHelper.save(account: KeychainHelper.secretAccount, value: legacySecret)
             UserDefaults.standard.removeObject(forKey: "walkie.secret")
             loadedSecret = legacySecret
@@ -127,7 +154,13 @@ public final class WalkieStore {
             loadedSecret = KeychainHelper.load(account: KeychainHelper.secretAccount) ?? defaultSecret
         }
 
-        let loadedToken = KeychainHelper.load(account: KeychainHelper.tokenAccount) ?? defaultToken
+        let loadedToken: String
+        if let argToken {
+            KeychainHelper.save(account: KeychainHelper.tokenAccount, value: argToken)
+            loadedToken = argToken
+        } else {
+            loadedToken = KeychainHelper.load(account: KeychainHelper.tokenAccount) ?? defaultToken
+        }
 
         self.serverUrlString = storedUrl
         self.secret = loadedSecret

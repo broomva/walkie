@@ -67,7 +67,12 @@ public actor WalkieApiClient {
         req.httpMethod = method
         req.setValue(secret, forHTTPHeaderField: "x-genesis-walkie-secret")
         if let bearerToken, !bearerToken.isEmpty {
-            req.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
+            let scheme = baseUrl.scheme?.lowercased()
+            let host = baseUrl.host?.lowercased() ?? ""
+            let isPlainLocalHttp = scheme == "http" && host.hasSuffix(".local")
+            if !isPlainLocalHttp {
+                req.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
+            }
         }
         if let body {
             req.httpBody = body
@@ -218,6 +223,11 @@ public actor WalkieApiClient {
             let msg = String(data: data, encoding: .utf8) ?? "status \(http.statusCode)"
             throw WalkieApiError.httpError(status: http.statusCode, message: msg)
         }
-        return (try? JSONDecoder().decode(ApiControlResult.self, from: data)) ?? ApiControlResult(ok: true)
+        let decoded = try JSONDecoder().decode(ApiControlResult.self, from: data)
+        if decoded.ok == false {
+            let message = decoded.error ?? decoded.reason ?? "Control action failed"
+            throw WalkieApiError.httpError(status: http.statusCode, message: message)
+        }
+        return decoded
     }
 }

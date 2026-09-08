@@ -9,9 +9,10 @@ public struct ThreadScreen: View {
 
     let thread: ApiThread
     @State private var messageInput: String = ""
-    @State private var turns: [ApiMessageTurn] = []
+    @State private var turns: [ApiMessageTurn]
     @State private var isSending: Bool = false
     @State private var isShowingActions: Bool = false
+    @State private var hasLoadedInitialTurns: Bool = false
 
     public init(store: WalkieStore, thread: ApiThread) {
         self.store = store
@@ -177,8 +178,19 @@ public struct ThreadScreen: View {
 
     private func loadTurns() async {
         let serverTurns = await store.fetchTurns(for: thread.threadId)
-        if !serverTurns.isEmpty {
+        if !hasLoadedInitialTurns {
+            hasLoadedInitialTurns = true
             self.turns = serverTurns
+        } else {
+            var existingIds = Set(turns.map(\.id))
+            var merged = turns
+            for serverTurn in serverTurns {
+                if !existingIds.contains(serverTurn.id) {
+                    merged.append(serverTurn)
+                    existingIds.insert(serverTurn.id)
+                }
+            }
+            self.turns = merged
         }
     }
 

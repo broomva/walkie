@@ -182,4 +182,37 @@ func controlActionMapping() {
     #expect(ControlAction.reset.rawValue == "reset")
 }
 
+@Test("ApiControlResult decodes failure reasons cleanly")
+func controlResultFailureDecoding() throws {
+    let failJson = """
+    {
+      "ok": false,
+      "reason": "unsupported"
+    }
+    """
+    let res = try JSONDecoder().decode(ApiControlResult.self, from: failJson.data(using: .utf8)!)
+    #expect(res.ok == false)
+    #expect(res.reason == "unsupported")
+}
+
+@Test("WalkieStore initializes without embedded secrets")
+@MainActor
+func storeInitWithoutHardcodedSecrets() {
+    let store = WalkieStore(defaultSecret: "", defaultToken: "")
+    #expect(store.serverUrlString.hasPrefix("http"))
+}
+
+@Test("WalkieStore persists secret and token across instances")
+@MainActor
+func storeSecretAndTokenPersistence() {
+    let testSecret = "test-secret-\(UUID().uuidString)"
+    let testToken = "test-token-\(UUID().uuidString)"
+    let store1 = WalkieStore(defaultSecret: "", defaultToken: "")
+    store1.secret = testSecret
+    store1.token = testToken
+    let store2 = WalkieStore(defaultSecret: "", defaultToken: "")
+    #expect(store2.secret == testSecret)
+    #expect(store2.token == testToken)
+}
+
 

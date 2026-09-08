@@ -325,11 +325,13 @@ public struct ApiControlResult: Codable, Sendable {
     public let ok: Bool?
     public let phase: String?
     public let error: String?
+    public let reason: String?
 
-    public init(ok: Bool? = nil, phase: String? = nil, error: String? = nil) {
+    public init(ok: Bool? = nil, phase: String? = nil, error: String? = nil, reason: String? = nil) {
         self.ok = ok
         self.phase = phase
         self.error = error
+        self.reason = reason
     }
 }
 

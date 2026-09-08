@@ -9,6 +9,8 @@ public struct VoiceScreen: View {
 
     @State private var isTalking: Bool = false
     @State private var volume: Double = 0.35
+    @State private var interruptErrorMessage: String? = nil
+    @State private var isShowingInterruptError: Bool = false
 
     public init(store: WalkieStore) {
         self.store = store
@@ -84,7 +86,12 @@ public struct VoiceScreen: View {
                         volume = 0.15
                         if let threadId = store.selectedThread?.threadId ?? store.filteredThreads.first?.threadId {
                             Task {
-                                try? await store.interrupt(threadId: threadId)
+                                do {
+                                    try await store.interrupt(threadId: threadId)
+                                } catch {
+                                    interruptErrorMessage = error.localizedDescription
+                                    isShowingInterruptError = true
+                                }
                             }
                         }
                     }
@@ -111,6 +118,11 @@ public struct VoiceScreen: View {
             .padding(.bottom, WalkieSpace.s2)
         }
         .background(t.bg.ignoresSafeArea())
+        .alert("Interrupt Failed", isPresented: $isShowingInterruptError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(interruptErrorMessage ?? "Could not interrupt thread.")
+        }
         .task {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 150_000_000)
