@@ -19,7 +19,7 @@
 
 ## TL;DR
 
-Fifty screens, both themes, one component set, three shaders, two spec documents and a
+Fifty screens, both themes exported, one component set, three shaders, two spec documents and a
 wiring board read out of the Genesis source. Everything needed to start the client exists.
 
 Read in this order: **the amendment**, **this file**, then the screens.
@@ -53,8 +53,8 @@ grep -c "Orchestrator · scope" designs/walkie.pen   # 0 = stale, >0 = saved
 
 | Artefact | Path |
 |---|---|
-| Screens, as images | `docs/design/screens/*.png` (50, slug-named, dark, 2×) + `INDEX.md` |
-| Screens, as markup | `docs/design/walkie-screens.html` (self-contained) |
+| Screens, as images | `docs/design/screens/*-dark.png` and `docs/design/screens-light/*-light.png` (50 each, 2×) + `screens/INDEX.md` |
+| Screens, as markup | `docs/design/walkie-screens.html` (dark) · `walkie-screens-light.html` (light) |
 | Reasoning boards | `docs/design/walkie-boards.html` (17 boards) |
 | Design tokens | `docs/design/tokens/WalkieTokens.swift` (generated, parses clean) |
 | Shaders | `docs/design/shaders/{orb,undertow,understop}.glsl` |
@@ -192,8 +192,10 @@ Load-bearing and argued to a conclusion. Changing one is a product decision.
 
 ## Known limitations of this handoff
 
-- **Exports are dark theme only.** The canvas renders one theme at a time and there is no
-  per-theme export. Light versions need a re-export after switching the mode axis.
+- **Both themes are exported.** A node can pin its own theme with `theme: {mode: "light"}`,
+  which overrides the canvas, so the light set was produced without switching the canvas and
+  the pins were cleared afterwards. To regenerate: pin, export, then `Update(id, {theme: {}})`
+  to un-pin — `theme: null` is rejected, `{}` is the way to clear it.
 - **Two boards do not render** in the authoring environment — `iOS · Dynamic Island` and
   `iOS · Widgets`. Their data is correct; the renderer applies a spurious +50px offset to
   their children. Use the `The ambient layer` board and the lock-screen composition as the

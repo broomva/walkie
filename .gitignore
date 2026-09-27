@@ -11,3 +11,8 @@ dist/
 
 # CI checks genesis out here for the browser probe; never committed.
 .genesis/
+
+# Swift build artifacts
+.build/
+.swiftpm/
+

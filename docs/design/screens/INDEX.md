@@ -1,54 +1,58 @@
 # Screen exports
 
-Dark theme, 2×. Generated from `designs/walkie.pen`.
+50 screens, 2×, generated from `designs/walkie.pen`.
 
-- `access-dark.png` — App · Access
-- `add-workspace-dark.png` — App · Add workspace
-- `ask-answered-dark.png` — App · Ask · answered
-- `ask-consequential-dark.png` — App · Ask · consequential
-- `ask-low-stakes-dark.png` — App · Ask · low stakes
-- `connecting-dark.png` — App · Connecting
-- `dispatch-sent-dark.png` — App · Dispatch · sent
-- `empty-dark.png` — App · Empty
-- `history-dark.png` — App · History
-- `home-dark.png` — App · Home
-- `home-all-quiet-dark.png` — App · Home · all quiet
-- `host-offline-dark.png` — App · Host offline
-- `look-approved-dark.png` — App · Look · approved
-- `look-contained-dark.png` — App · Look · contained
-- `look-needs-a-screen-dark.png` — App · Look · needs a screen
-- `look-sent-back-dark.png` — App · Look · sent back
-- `microphone-dark.png` — App · Microphone
-- `microphone-denied-dark.png` — App · Microphone denied
-- `notifications-dark.png` — App · Notifications
-- `off-tailnet-dark.png` — App · Off tailnet
-- `orchestrator-scope-dark.png` — App · Orchestrator · scope
-- `pair-dark.png` — App · Pair
-- `push-dark.png` — App · Push
-- `ready-dark.png` — App · Ready
-- `receipts-dark.png` — App · Receipts
-- `routine-dark.png` — App · Routine
-- `scope-explainer-dark.png` — App · Scope explainer
-- `session-seaslug-dark.png` — App · Session · seaslug
-- `settings-dark.png` — App · Settings
-- `settings-appearance-dark.png` — App · Settings · Appearance
-- `settings-diagnostics-dark.png` — App · Settings · Diagnostics
-- `settings-notifications-dark.png` — App · Settings · Notifications
-- `settings-turn-taking-dark.png` — App · Settings · Turn-taking
-- `settings-voice-dark.png` — App · Settings · Voice
-- `standing-dark.png` — App · Standing
-- `switcher-dark.png` — App · Switcher
-- `thread-orchestrator-dark.png` — App · Thread · orchestrator
-- `thread-seaslug-dark.png` — App · Thread · seaslug
-- `voice-barge-in-dark.png` — App · Voice · barge-in
-- `voice-degraded-dark.png` — App · Voice · degraded
-- `voice-escalated-dark.png` — App · Voice · escalated
-- `voice-orchestrator-dark.png` — App · Voice · orchestrator
-- `voice-re-established-dark.png` — App · Voice · re-established
-- `voice-session-idle-dark.png` — App · Voice · session idle
-- `voice-store-answered-dark.png` — App · Voice · store answered
-- `voice-walkie-talking-dark.png` — App · Voice · walkie talking
-- `voice-you-talking-dark.png` — App · Voice · you talking
-- `welcome-dark.png` — App · Welcome
-- `workspace-seaslug-dark.png` — App · Workspace · seaslug
-- `workspaces-dark.png` — App · Workspaces
+- Dark: `screens/<slug>-dark.png`
+- Light: `screens-light/<slug>-light.png`
+- Whole set as markup: `walkie-screens.html` (dark) · `walkie-screens-light.html` (light)
+
+- `access` — Access
+- `add-workspace` — Add workspace
+- `ask-answered` — Ask · answered
+- `ask-consequential` — Ask · consequential
+- `ask-low-stakes` — Ask · low stakes
+- `connecting` — Connecting
+- `dispatch-sent` — Dispatch · sent
+- `empty` — Empty
+- `history` — History
+- `home` — Home
+- `home-all-quiet` — Home · all quiet
+- `host-offline` — Host offline
+- `look-approved` — Look · approved
+- `look-contained` — Look · contained
+- `look-needs-a-screen` — Look · needs a screen
+- `look-sent-back` — Look · sent back
+- `microphone` — Microphone
+- `microphone-denied` — Microphone denied
+- `notifications` — Notifications
+- `off-tailnet` — Off tailnet
+- `orchestrator-scope` — Orchestrator · scope
+- `pair` — Pair
+- `push` — Push
+- `ready` — Ready
+- `receipts` — Receipts
+- `routine` — Routine
+- `scope-explainer` — Scope explainer
+- `session-seaslug` — Session · seaslug
+- `settings` — Settings
+- `settings-appearance` — Settings · Appearance
+- `settings-diagnostics` — Settings · Diagnostics
+- `settings-notifications` — Settings · Notifications
+- `settings-turn-taking` — Settings · Turn-taking
+- `settings-voice` — Settings · Voice
+- `standing` — Standing
+- `switcher` — Switcher
+- `thread-orchestrator` — Thread · orchestrator
+- `thread-seaslug` — Thread · seaslug
+- `voice-barge-in` — Voice · barge-in
+- `voice-degraded` — Voice · degraded
+- `voice-escalated` — Voice · escalated
+- `voice-orchestrator` — Voice · orchestrator
+- `voice-re-established` — Voice · re-established
+- `voice-session-idle` — Voice · session idle
+- `voice-store-answered` — Voice · store answered
+- `voice-walkie-talking` — Voice · walkie talking
+- `voice-you-talking` — Voice · you talking
+- `welcome` — Welcome
+- `workspace-seaslug` — Workspace · seaslug
+- `workspaces` — Workspaces

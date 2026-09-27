@@ -38,6 +38,8 @@ const EXEMPT: Readonly<Record<string, string>> = {
   "AGENTS.md": "states the rule, and cites the path that motivated it",
   "docs/design/walkie-screens.html":
     "design mockup — the workspace paths are rendered UI content, the thing being designed, not links",
+  "docs/design/walkie-screens-light.html":
+    "design mockup — the workspace paths are rendered UI content, the thing being designed, not links",
 };
 
 /** Text files git is tracking. Binary blobs (.pen, .png) are not scanned. */
