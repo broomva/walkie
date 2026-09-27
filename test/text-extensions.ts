@@ -6,6 +6,8 @@
 export const TEXT_EXTENSIONS = [
   ".md",
   ".html",
+  ".css",
+  ".webmanifest",
   ".json",
   ".jsonl",
   ".yaml",
