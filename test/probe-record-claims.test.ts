@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { TEXT_EXTENSIONS } from "./text-extensions";
 
 /**
  * Claims BRO-2406 retracted must not come back as live text.
@@ -49,14 +50,13 @@ const RETRACTED = [
 const RETRACTION_MARKERS = ["Corrected 2026-09-01", "CORRECTED"];
 
 function tracked(): string[] {
-  const out = Bun.spawnSync(
-    ["git", "ls-files", "--", "*.md", "*.html", "*.yaml", "*.yml", "*.ts", "*.sh"],
-    { cwd: ROOT },
-  ).stdout.toString();
+  // Every tracked text file, by the same extension set as the other repo-wide
+  // scan, so a retracted sentence in a .json or .swift file is not invisible.
+  const out = Bun.spawnSync(["git", "ls-files", "-z"], { cwd: ROOT }).stdout.toString();
   return out
-    .split("\n")
+    .split("\0")
     .map((l) => l.trim())
-    .filter(Boolean);
+    .filter((l) => l.length > 0 && TEXT_EXTENSIONS.some((e) => l.endsWith(e)));
 }
 
 describe("retracted claims stay retracted", () => {
@@ -72,12 +72,9 @@ describe("retracted claims stay retracted", () => {
   test("no retracted claim appears as a live assertion", () => {
     const offences: string[] = [];
     for (const f of files) {
-      let body: string;
-      try {
-        body = readFileSync(`${ROOT}/${f}`, "utf8");
-      } catch {
-        continue;
-      }
+      // No try/catch: an unreadable tracked file must fail the scan, not be
+      // skipped — a skipped file is indistinguishable from a clean one.
+      const body = readFileSync(`${ROOT}/${f}`, "utf8");
       body.split("\n").forEach((line, i) => {
         if (RETRACTION_MARKERS.some((m) => line.includes(m))) return;
         for (const claim of RETRACTED) {
