@@ -137,17 +137,22 @@ generates locally. It is not a credential, but its entropy trips gitleaks'
 
 ## The end-to-end probe — read BRO-2406 before citing it
 
-`probes/elevenlabs-e2e/` is the arc's only empirical proof and its record is weaker than it
-reads. Five defects are open (BRO-2406); the two that will mislead you fastest:
+`probes/elevenlabs-e2e/` is the arc's only empirical proof. Four of BRO-2406's five defects
+are **fixed** (walkie#11); what remains is a measurement, and it is the thing to be careful
+about:
 
-- **`run.sh` runs the *text* probe.** Its last line is `bun run drive.ts`, and it never sets
-  `WALKIE_AUDIO=1`, so `create-agent.ts` builds a `text_only: true` agent. `drive-audio.ts`
-  is invoked by no script in this repo. Anything citing `./run.sh` as the reproduction for
-  an *audio* result is citing the wrong command.
-- **Both probes' scores have a floating denominator.** `finish()` prints
-  `${results.length - bad.length}/${results.length}` with nothing asserting how many checks
-  were expected, so a run that skips a branch reports N/N and exits 0. Two of the ten
-  `check(...)` calls assert a literal `true` and can only be absent, never fail.
+- **Cite no score for the audio probe.** Its declared set gained a barge-in assertion that
+  never existed — `sawInterruption` was set and never read, so barge-in was in none of the
+  ten scored checks while being recorded as proven. The probe has not been re-run since,
+  because that needs live quota. Whether barge-in fires reliably is an **open measurement**.
+- **`./run.sh` is the text probe; `./run.sh --audio` is the audio one.** It used to run
+  `drive.ts` unconditionally while three documents cited it for audio results, and both
+  probes print the same score format, so a text run was indistinguishable on the console
+  from the audio result it was read as. The transport is now the first line of output.
+
+Fixed and now enforced by tests: the floating denominator (`score.ts` reconciles against a
+declared set — missing, undeclared and duplicated are all red), the literal-`true` checks,
+and `run.sh`'s wait loop, which stated a 90-second budget and expired in about one second.
 
 The probe is **deliberately not a CI gate**: it needs `ELEVENLABS_API_KEY`, live quota,
 tmux, and macOS `say`. Its absence from `.github/workflows/ci.yml` is a decision.

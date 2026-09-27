@@ -71,7 +71,7 @@ total=0
 # the gates can fail would go green having measured nothing. Unlike the arity
 # check this replaced in ci.yml, these two numbers are independent: `total` is
 # incremented by calls that actually ran, EXPECTED_MUTANTS is a separate literal.
-EXPECTED_MUTANTS=54
+EXPECTED_MUTANTS=55
 
 # mutate <label> <file> <anchor> <replacement> <expected-failing-test-substring>
 mutate() {
@@ -454,10 +454,20 @@ mutate "the session wait stops sleeping, so its stated budget expires at once" \
   "  :" \
   "AT LEAST its budget"
 
-# The mutant for the retracted probe claim lives with the pieces it needs: it
-# mutates AGENTS.md and is killed by test/probe-record-claims.test.ts, and BOTH
-# stay in #11 because that test polices the AGENTS.md edit. Splitting them apart
-# would leave a mutant here with no kill-test and a gate there with no mutant.
+# The claim is ASSEMBLED, never written literally: test/probe-record-claims.test.ts
+# scans every tracked file for exactly this string, so spelling it out here would
+# make the sweep flag itself and the gate would be unfalsifiable.
+#
+# This mutant travels with AGENTS.md and probe-record-claims.test.ts as one unit:
+# it mutates the first and is killed by the second. #14 carried the probe work and
+# left all three here, because a mutant without its kill-test proves nothing and a
+# gate without its mutant is unproven.
+RETRACTED_HEAD="PROVEN"
+mutate "a retracted probe claim comes back as live text" \
+  AGENTS.md \
+  "## The end-to-end probe" \
+  "## The end-to-end probe is ${RETRACTED_HEAD} — 10/10" \
+  "retracted claim appears"
 
 if [ "$total" -ne "$EXPECTED_MUTANTS" ]; then
   echo "$total mutants ran, expected $EXPECTED_MUTANTS — a mutant was added or removed"

@@ -20,6 +20,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { TEXT_EXTENSIONS } from "./text-extensions";
 
 const ROOT = resolve(import.meta.dir, "..");
 
@@ -43,7 +44,7 @@ const EXEMPT: Readonly<Record<string, string>> = {
 };
 
 /** Text files git is tracking. Binary blobs (.pen, .png) are not scanned. */
-const TEXT = [".md", ".html", ".json", ".jsonl", ".yaml", ".yml", ".ts", ".sh", ".glsl", ".swift"];
+const TEXT = TEXT_EXTENSIONS;
 
 const tracked = Bun.spawnSync(
   ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
